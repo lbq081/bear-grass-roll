@@ -42,6 +42,14 @@
     cursor:pointer; user-select:none; -webkit-user-select:none; touch-action:none; }
   .jumpbtn:active { transform:scale(0.9); background:#ffe9c2; }
   .jumpbtn.hidden { display:none; }
+  #steer { position:absolute; left:16px; bottom:calc(36px + env(safe-area-inset-bottom)); z-index:6;
+    display:flex; gap:14px; }
+  #steer.hidden { display:none; }
+  .steerbtn { width:76px; height:76px; border-radius:50%; border:3px solid #7fc95a;
+    background:rgba(255,255,255,0.9); color:#4a7a2d; font-size:30px; font-weight:900;
+    box-shadow:0 6px 16px rgba(0,0,0,0.28); cursor:pointer; touch-action:none;
+    user-select:none; -webkit-user-select:none; }
+  .steerbtn:active { transform:scale(0.9); background:#e8f7dd; }
 
   /* ---------- 弹层 ---------- */
   .overlay { position:absolute; inset:0; z-index:10; display:flex; align-items:center; justify-content:center;
@@ -87,6 +95,10 @@
     </div>
   </div>
 
+  <div id="steer" class="hidden">
+    <button id="btnLeft" class="steerbtn">◀</button>
+    <button id="btnRight" class="steerbtn">▶</button>
+  </div>
   <button id="btnJump" class="jumpbtn hidden">跳!</button>
 
   <div id="menu" class="overlay">
@@ -94,10 +106,10 @@
       <span class="bear">🐻</span>
       <h1>草地打滚的小熊</h1>
       <p class="sub">在软软的草地上滚来滚去～<br>收集 🍯 和 🍓 补充体力，<br>躲开大石头、滚石和捣蛋的小蜜蜂！</p>
-      <p class="hint">👆 按住屏幕<b>左边 / 右边</b>控制方向<br>🔘 右下角「跳!」按钮 / 轻点屏幕 = 跳<br>⚠️ 前方出现 <b>!</b> 或白色弧线 = 起跳时机<br>🔥 连续收集 = 连击加分<br>🖥 电脑：← → 方向，空格跳跃</p>
+      <p class="hint">🕹️ 左下角 <b>◀ ▶</b> 按钮控制方向<br>🔘 右下角「跳!」跳跃（轻点屏幕也可以跳）<br>⚠️ 红色 <b>!</b> / 白色弧线 = 起跳时机<br>🔥 连续收集 = 连击加分<br>🖥 电脑：← → 方向，空格跳跃</p>
       <button id="btnStart" class="btn">开始打滚 🐾</button>
       <div id="menuBest"></div>
-      <div class="ver">v3 · 跳跃手感版（跳!按钮 / 起跳弧线提示 / 跳跃缓冲）</div>
+      <div class="ver">v4 · 快乐版（新按键布局 · 音乐 · 鼓励彩蛋）</div>
     </div>
   </div>
 
@@ -116,7 +128,7 @@
       <h1 id="overTitle">滚不动啦～</h1>
       <div id="finalStats"></div>
       <button id="btnRestart" class="btn">再滚一次 🔄</button>
-      <div class="tip">TIP：石头要跳、沟壑要提前跳、被撞会断连击哦</div>
+      <div class="tip">TIP：跟着白色弧线起跳，沟壑再也不怕啦～ 🌈</div>
     </div>
   </div>
 </div>
@@ -223,6 +235,27 @@ function sfx(name){
   }
 }
 
+/* ================= 背景音乐（音乐盒） ================= */
+const MELODY = [
+  [523,1],[659,1],[784,1],[880,1],[1047,1],[880,1],[784,1],[659,1],
+  [523,1],[659,1],[784,1],[880,1],[784,1],[659,1],[587,1],[523,2]
+];
+let musicTimer = null;
+function scheduleMusic(){
+  if (!actx || muted) return;
+  const t0 = actx.currentTime + 0.05;
+  let t = 0;
+  for (let i = 0; i < MELODY.length; i++) {
+    const n = MELODY[i];
+    tone(n[0], n[0], n[1] * 0.21, 'triangle', 0.10, t);
+    tone(n[0] / 2, n[0] / 2, n[1] * 0.21, 'sine', 0.05, t);
+    t += n[1] * 0.22;
+  }
+  musicTimer = setTimeout(scheduleMusic, Math.max(200, t * 1000 - 300));
+}
+function startMusic(){ stopMusic(); if (muted) return; ensureAudio(); if (actx) scheduleMusic(); }
+function stopMusic(){ if (musicTimer) { clearTimeout(musicTimer); musicTimer = null; } }
+
 /* ================= 世界与地形 ================= */
 function terrainY(x){
   return VIEW_H * 0.70
@@ -248,8 +281,18 @@ function inGap(x){
   return false;
 }
 function comboMult(){ return Math.min(10, Math.max(1, combo)); }
-function comboHit(){ combo++; comboTime = 3.5; }
+function comboHit(){
+  combo++; comboTime = 3.5;
+  if (combo === 3) addToast('太棒了! 🔥');
+  else if (combo === 5) addToast('超厉害! ✨');
+  else if (combo === 8) addToast('无敌小熊! 👑');
+  else if (combo === 10) addToast('连击封神! 🌟');
+}
 function comboBreak(){ if (combo >= 2) comboBreakT = 1.4; combo = 0; }
+function addFloat(x, y, text, color){
+  floats.push({ x: x, y: y, text: text, color: color, life: 1.1, max: 1.1 });
+}
+function addToast(text){ toastTxt = text; toastT = 2.0; }
 
 /* ================= 游戏状态 ================= */
 const R = 30;            // 小熊半径
@@ -271,19 +314,22 @@ let items, rocks, puddles, boulders, gaps, trail, marks, ps, bees;
 let nextItemX, nextRockX, nextPuddleX, nextGapX, spawnCount, beeTimer, boulderTimer;
 let camX = 0, camY = 0, shake = 0;
 let eyeMode = 'idle';
+let floats = [];
+let toastTxt = null, toastT = 0, recordShown = false, metersMilestone = 0;
 const clouds = [];
 for (let i = 0; i < 5; i++) {
   clouds.push({ x: Math.random() * 1600, y: 60 + Math.random() * 130, s: 0.7 + Math.random() * 0.8, v: 8 + Math.random() * 10 });
 }
 
 function resetGame(){
-  bear = { x: STARTX, y: 0, vx: 0, vy: 0, airborne: false, falling: false, overGapT: 0, angle: 0, energy: 100, groundY: terrainY(STARTX) };
+  bear = { x: STARTX, y: 0, vx: 0, vy: 0, airborne: false, falling: false, overGapT: 0, squash: 0, angle: 0, energy: 100, groundY: terrainY(STARTX) };
   honey = 0;
   picked = new Set();
   playTime = 0;
   lastFi = null;
   meters = 0;
   combo = 0; comboTime = 0; comboBreakT = 0; points = 0; score = 0; coyote = 0; jumpBuf = 0;
+  floats = []; toastTxt = null; toastT = 0; recordShown = false; metersMilestone = 0;
   items = []; rocks = []; puddles = []; boulders = []; gaps = [];
   trail = [[]]; marks = []; ps = []; bees = [];
   beeTimer = 15; boulderTimer = 40;
@@ -296,18 +342,14 @@ function resetGame(){
 /* ================= 输入 ================= */
 const pointers = new Map();
 const keys = new Set();
-function sideOf(x){ return x < W * 0.5 ? -1 : 1; }
+const btnDirs = { left: false, right: false };
 
 if (window.PointerEvent) {
   canvas.addEventListener('pointerdown', function(e){
     ensureAudio();
     if (state.mode === 'playing') {
-      pointers.set(e.pointerId, { side: sideOf(e.clientX), x: e.clientX, y: e.clientY, t: performance.now() });
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, t: performance.now() });
     }
-  });
-  canvas.addEventListener('pointermove', function(e){
-    const p = pointers.get(e.pointerId);
-    if (p) p.side = sideOf(e.clientX);
   });
   canvas.addEventListener('pointerup', function(e){
     const p = pointers.get(e.pointerId);
@@ -323,15 +365,7 @@ if (window.PointerEvent) {
     if (state.mode !== 'playing') return;
     for (let i = 0; i < e.changedTouches.length; i++) {
       const t = e.changedTouches[i];
-      byId[t.identifier] = { side: sideOf(t.clientX), x: t.clientX, y: t.clientY, t: performance.now() };
-    }
-    e.preventDefault();
-  }, { passive: false });
-  canvas.addEventListener('touchmove', function(e){
-    for (let i = 0; i < e.changedTouches.length; i++) {
-      const t = e.changedTouches[i];
-      const p = byId[t.identifier];
-      if (p) p.side = sideOf(t.clientX);
+      byId[t.identifier] = { x: t.clientX, y: t.clientY, t: performance.now() };
     }
     e.preventDefault();
   }, { passive: false });
@@ -346,6 +380,17 @@ if (window.PointerEvent) {
     e.preventDefault();
   }, { passive: false });
 }
+function bindSteer(btn, dir){
+  btn.addEventListener('pointerdown', function(e){ e.preventDefault(); ensureAudio(); btnDirs[dir] = true; });
+  btn.addEventListener('pointerup', function(e){ e.preventDefault(); btnDirs[dir] = false; });
+  btn.addEventListener('pointercancel', function(){ btnDirs[dir] = false; });
+  btn.addEventListener('pointerleave', function(){ btnDirs[dir] = false; });
+  btn.addEventListener('touchstart', function(e){ e.preventDefault(); ensureAudio(); btnDirs[dir] = true; }, { passive: false });
+  btn.addEventListener('touchend', function(e){ e.preventDefault(); btnDirs[dir] = false; }, { passive: false });
+  btn.addEventListener('touchcancel', function(){ btnDirs[dir] = false; });
+}
+bindSteer(document.getElementById('btnLeft'), 'left');
+bindSteer(document.getElementById('btnRight'), 'right');
 window.addEventListener('keydown', function(e){
   if (e.code === 'ArrowLeft' || e.code === 'ArrowRight' || e.code === 'ArrowUp' ||
       e.code === 'KeyA' || e.code === 'KeyD' || e.code === 'KeyW' || e.code === 'Space') e.preventDefault();
@@ -356,7 +401,8 @@ window.addEventListener('keyup', function(e){ keys.delete(e.code); });
 
 function getInputDir(){
   let d = 0;
-  pointers.forEach(function(p){ d += p.side; });
+  if (btnDirs.left) d -= 1;
+  if (btnDirs.right) d += 1;
   if (keys.has('ArrowLeft') || keys.has('KeyA')) d -= 1;
   if (keys.has('ArrowRight') || keys.has('KeyD')) d += 1;
   return d === 0 ? 0 : (d > 0 ? 1 : -1);
@@ -449,7 +495,7 @@ function spawn(){
     nextPuddleX += 1100 + Math.random() * 600;
   }
   // 沟壑（22 秒后出现）
-  if (playTime > 22) {
+  if (playTime > 26) {
     if (nextGapX < bear.x + viewW * 0.6) nextGapX = bear.x + viewW * (0.9 + Math.random() * 0.5);
     while (nextGapX < bear.x + viewW * 2.0) {
       const g = { x: nextGapX, w: 100 + Math.random() * 80 };
@@ -510,10 +556,17 @@ function updatePlay(dt){
   const dir = getInputDir();
   const slope = clamp(slopeAt(bear.x), -0.6, 0.6);
 
-  // 连击计时
+  // 连击计时与反馈
   comboTime -= dt;
   if (comboTime <= 0) combo = 0;
   comboBreakT = Math.max(0, comboBreakT - dt);
+  bear.squash = Math.max(0, bear.squash - dt * 2.5);
+  for (let i = floats.length - 1; i >= 0; i--) {
+    const f = floats[i];
+    f.life -= dt; f.y -= 46 * dt;
+    if (f.life <= 0) floats.splice(i, 1);
+  }
+  if (toastT > 0) toastT -= dt; else toastTxt = null;
 
   // 物理
   bear.vx += dir * ACC * dt;
@@ -554,6 +607,7 @@ function updatePlay(dt){
       bear.y = bear.groundY - R;
       bear.airborne = false;
       bear.vy = 0;
+      bear.squash = 0.18;
       sfx('land');
       addDust(bear.x, bear.groundY, 3, Math.sign(bear.vx) || 1);
       trail.push([]);
@@ -567,7 +621,7 @@ function updatePlay(dt){
   bear.angle += (bear.vx / R) * dt;
 
   // 体力消耗（越滚越累，水坑更费劲，随时间加速）
-  bear.energy -= (2.6 + (Math.abs(bear.vx) > 40 ? 0.6 : 0) + (inPuddle ? 1.5 : 0)) * diff * dt;
+  bear.energy -= (2.3 + (Math.abs(bear.vx) > 40 ? 0.5 : 0) + (inPuddle ? 1.5 : 0)) * diff * dt;
   if (bear.energy <= 0) { bear.energy = 0; gameOver('energy'); return; }
 
   // 水花与尘土
@@ -584,7 +638,7 @@ function updatePlay(dt){
       const nx = d > 0.01 ? dx / d : -1;
       bear.x = rk.x + nx * (R + rk.r * 0.9);
       bear.vx = -bear.vx * 0.45 + nx * 60;
-      bear.energy = Math.max(0, bear.energy - 10);
+      bear.energy = Math.max(0, bear.energy - 7);
       comboBreak();
       shake = 9;
       sfx('bump'); vibrate(40);
@@ -597,7 +651,7 @@ function updatePlay(dt){
   boulderTimer -= dt;
   if (boulderTimer <= 0) {
     boulderTimer = 11 + Math.random() * 8;
-    if (playTime > 40 && boulders.length < 2) {
+    if (playTime > 45 && boulders.length < 2) {
       boulders.push({ x: bear.x + viewW * 1.4, r: 34 + Math.random() * 8,
         vx: -(230 + Math.random() * 150 + Math.min(120, playTime * 0.8)), angle: 0 });
     }
@@ -614,7 +668,7 @@ function updatePlay(dt){
       boulders.splice(i, 1);
       const nx = d > 0.01 ? dx / d : -1;
       bear.vx = -bear.vx * 0.5 + nx * 80;
-      bear.energy = Math.max(0, bear.energy - 15);
+      bear.energy = Math.max(0, bear.energy - 12);
       comboBreak();
       shake = 10;
       sfx('bump'); vibrate(60);
@@ -632,18 +686,20 @@ function updatePlay(dt){
     if (Math.abs(dx) < R + 20 && Math.abs(dy) < R + 24) {
       it.taken = true;
       if (it.type === 'honey') {
-        bear.energy = Math.min(100, bear.energy + 26);
+        bear.energy = Math.min(100, bear.energy + 30);
         honey++;
         comboHit();
         points += 20 * comboMult();
         sfx('honey');
         addSparkle(it.x, iy, 10);
+        addFloat(it.x, iy - 28, '+' + (20 * comboMult()), '#ff9d2e');
       } else {
-        bear.energy = Math.min(100, bear.energy + 6);
+        bear.energy = Math.min(100, bear.energy + 8);
         comboHit();
         points += 5 * comboMult();
         sfx('berry');
         addSparkle(it.x, iy, 6);
+        addFloat(it.x, iy - 26, '+' + (5 * comboMult()), '#ff5fa2');
       }
     }
   }
@@ -660,6 +716,9 @@ function updatePlay(dt){
       addPetal(fi * 30, terrainY(fi * 30) - 8, 5);
     }
   }
+
+  // 高连击时撒金粉
+  if (!bear.airborne && combo >= 5 && Math.random() < 0.3) addSparkle(bear.x - R * 0.8, bear.y + R * 0.6, 1);
 
   // 滚痕（分段：跳跃/沟壑会断开）
   if (!bear.airborne && Math.abs(bear.vx) > 12) {
@@ -693,7 +752,7 @@ function updatePlay(dt){
       const d = Math.sqrt((bear.x - b.x) * (bear.x - b.x) + (bear.y - b.y) * (bear.y - b.y));
       if (d < R + 16) {
         b.leave = true; b.leaveT = 1.4;
-        bear.energy = Math.max(0, bear.energy - 14);
+        bear.energy = Math.max(0, bear.energy - 10);
         bear.vx = (bear.x > b.x ? 1 : -1) * 200;
         comboBreak();
         shake = 7;
@@ -724,6 +783,9 @@ function updatePlay(dt){
 
   meters = Math.max(0, (bear.x - STARTX) / 48);
   score = Math.floor(meters) + points;
+  const mi = Math.floor(meters / 100);
+  if (mi > metersMilestone) { metersMilestone = mi; addToast(mi * 100 + ' 米啦! 🎉'); }
+  if (!recordShown && state.best > 0 && score > state.best) { recordShown = true; addToast('🏆 打破纪录啦!'); }
   updateHUD();
 }
 
@@ -1020,6 +1082,7 @@ function drawBear(){
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(bear.angle);
+  if (bear.squash > 0) ctx.scale(1 + bear.squash * 0.4, 1 - bear.squash * 0.35);
   ctx.lineWidth = 3; ctx.strokeStyle = '#6b4523';
   for (let si = 0; si < 2; si++) {
     const s = si === 0 ? -1 : 1;
@@ -1157,6 +1220,19 @@ function drawWorld(){
   for (let i = i0; i <= i1; i++) drawBlade(i, false);
   drawParticles();
   if (state.mode === 'playing') drawWarnings();
+  for (let i = 0; i < floats.length; i++) {
+    const f = floats[i];
+    const a = Math.min(1, f.life / f.max * 1.6);
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.font = '900 20px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+    ctx.strokeText(f.text, f.x, f.y);
+    ctx.fillStyle = f.color;
+    ctx.fillText(f.text, f.x, f.y);
+    ctx.restore();
+  }
 
   // 连击显示
   if (state.mode === 'playing' && combo >= 2) {
@@ -1211,18 +1287,35 @@ function render(){
   drawWorld();
   ctx.restore();
 
+  // 鼓励提示
+  if (toastTxt && state.mode === 'playing') {
+    const p = toastT > 1.7 ? (2.0 - toastT) / 0.3 : (toastT < 0.3 ? toastT / 0.3 : 1);
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(1, p));
+    ctx.translate(W / 2, H * 0.2);
+    ctx.scale(0.8 + 0.2 * Math.min(1, p), 0.8 + 0.2 * Math.min(1, p));
+    ctx.font = '900 26px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.lineWidth = 6; ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+    ctx.strokeText(toastTxt, 0, 0);
+    ctx.fillStyle = '#ff5fa2';
+    ctx.fillText(toastTxt, 0, 0);
+    ctx.restore();
+  }
+
   // 新手提示
   if (state.mode === 'playing' && playTime < 6) {
-    const a = clamp(6 - playTime, 0, 1) * 0.32;
-    ctx.fillStyle = 'rgba(255,255,255,' + a + ')';
-    ctx.font = '700 22px sans-serif';
+    const a = clamp(6 - playTime, 0, 1);
+    ctx.save();
+    ctx.globalAlpha = a * 0.88;
+    ctx.font = '700 17px sans-serif';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.beginPath(); ctx.arc(W * 0.16, H - 110, 42, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(W * 0.84, H - 110, 42, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = 'rgba(90,59,31,' + (a * 2.4) + ')';
-    ctx.fillText('◀', W * 0.16, H - 112);
-    ctx.fillText('▶', W * 0.84, H - 112);
-    ctx.fillText('按住转向 · 点右下角「跳!」', W * 0.5, H - 44);
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    rrect(W / 2 - 160, H - 200, 320, 42, 21);
+    ctx.fill();
+    ctx.fillStyle = '#5a3b1f';
+    ctx.fillText('左下 ◀ ▶ 转向 · 右下「跳!」跳跃', W / 2, H - 179);
+    ctx.restore();
   }
 }
 let last = 0;
@@ -1257,10 +1350,12 @@ function setMode(mode){
   state.mode = mode;
   document.getElementById('hud').classList.toggle('hidden', mode !== 'playing');
   document.getElementById('btnJump').classList.toggle('hidden', mode !== 'playing');
+  document.getElementById('steer').classList.toggle('hidden', mode !== 'playing');
 }
 function startGame(){
   ensureAudio();
   sfx('start');
+  startMusic();
   resetGame();
   eyeMode = 'roll';
   document.getElementById('menu').classList.add('hidden');
@@ -1278,6 +1373,7 @@ function doResume(){
   ensureAudio();
   document.getElementById('pause').classList.add('hidden');
   setMode('playing');
+  startMusic();
   last = performance.now();
 }
 document.getElementById('btnStart').addEventListener('click', startGame);
@@ -1301,9 +1397,10 @@ document.getElementById('btnMute').addEventListener('click', function(){
   muted = !muted;
   try { localStorage.setItem('bearMute', muted ? '1' : '0'); } catch(e){}
   this.textContent = muted ? '🔇' : '🔊';
+  if (muted) stopMusic(); else if (state.mode === 'playing') startMusic();
 });
 document.addEventListener('visibilitychange', function(){
-  if (document.hidden) doPause();
+  if (document.hidden) { doPause(); stopMusic(); }
 });
 
 /* ================= 启动 ================= */
