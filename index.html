@@ -49,7 +49,7 @@
     border-radius:12px; overflow:hidden; border:2px solid rgba(255,255,255,0.9);
     box-shadow:0 6px 16px rgba(0,0,0,0.3); background:#222; }
   #camBox.hidden { display:none; }
-  #camPreview { display:block; width:132px; height:99px; }
+  #camPreview { display:block; width:160px; height:120px; }
   .steerbtn { width:76px; height:76px; border-radius:50%; border:3px solid #7fc95a;
     background:rgba(255,255,255,0.9); color:#4a7a2d; font-size:30px; font-weight:900;
     box-shadow:0 6px 16px rgba(0,0,0,0.28); cursor:pointer; touch-action:none;
@@ -106,7 +106,7 @@
   </div>
 
   <div id="camBox" class="hidden">
-    <canvas id="camPreview" width="132" height="99"></canvas>
+    <canvas id="camPreview" width="160" height="120"></canvas>
   </div>
   <video id="camVideo" autoplay playsinline muted style="display:none"></video>
 
@@ -125,7 +125,7 @@
       <button id="btnStart" class="btn">开始打滚 🐾</button>
       <div id="menuBest"></div>
       <div id="menuAch" class="ver"></div>
-      <div class="ver">v6 · 体感版（摄像头手指操控）</div>
+      <div class="ver">v6 · 体感版（手指骨骼识别操控）</div>
     </div>
   </div>
 
@@ -478,15 +478,15 @@ function getInputDir(){
   return d === 0 ? 0 : (d > 0 ? 1 : -1);
 }
 
-/* ================= 摄像头手指体感 ================= */
+/* ================= 摄像头手指体感（MediaPipe 手部骨骼识别） ================= */
 const camVideo = document.getElementById('camVideo');
 let camOn = false, camStream = null, camTimer = null;
-let camDir = 0, camCentroid = null, camLastSeen = 0, camCrossArmed = false;
+let camDir = 0, camTip = null, camTipSeen = 0, camCrossArmed = false;
+let camHands = null, camLoading = false;
 let camBuf = null, camBufCtx = null, camPrevGray = null;
-const camW = 64, camH = 48;
 
 function stopCam(){
-  camOn = false; camDir = 0; camCentroid = null; camCrossArmed = false;
+  camOn = false; camDir = 0; camTip = null; camCrossArmed = false;
   if (camTimer) { clearInterval(camTimer); camTimer = null; }
   if (camStream) {
     try { camStream.getTracks().forEach(function(t){ t.stop(); }); } catch(e){}
@@ -496,6 +496,32 @@ function stopCam(){
   document.getElementById('camBox').classList.add('hidden');
   document.getElementById('btnCam').textContent = '📷';
 }
+async function loadHands(){
+  if (camHands || camLoading) return;
+  camLoading = true;
+  try {
+    const vision = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs');
+    const fileset = await vision.FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
+    try {
+      camHands = await vision.HandLandmarker.createFromOptions(fileset, {
+        baseOptions: { modelAssetPath: 'models/hand_landmarker.task', delegate: 'GPU' },
+        runningMode: 'VIDEO',
+        numHands: 1
+      });
+    } catch(eGpu) {
+      camHands = await vision.HandLandmarker.createFromOptions(fileset, {
+        baseOptions: { modelAssetPath: 'models/hand_landmarker.task', delegate: 'CPU' },
+        runningMode: 'VIDEO',
+        numHands: 1
+      });
+    }
+    addToast('📷 手指识别就绪：指尖左右移动转向 · 上挑跳跃');
+  } catch(e) {
+    camHands = 'fallback';
+    addToast('📷 骨骼模型加载失败，已切换运动检测模式');
+  }
+  camLoading = false;
+}
 function toggleCam(){
   if (camOn) { stopCam(); return; }
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -503,72 +529,100 @@ function toggleCam(){
     return;
   }
   navigator.mediaDevices.getUserMedia({
-    video: { facingMode: 'user', width: { ideal: 320 }, height: { ideal: 240 } },
+    video: { facingMode: 'user', width: { ideal: 480 }, height: { ideal: 360 } },
     audio: false
   }).then(function(stream){
     camStream = stream;
     camVideo.srcObject = stream;
     return camVideo.play();
   }).then(function(){
-    camOn = true; camCrossArmed = false; camPrevGray = null;
+    camOn = true; camCrossArmed = false; camPrevGray = null; camTip = null;
     document.getElementById('camBox').classList.remove('hidden');
     document.getElementById('btnCam').textContent = '📷✓';
-    addToast('📷 手指体感开启：左右移动转向 · 向上一挑跳跃');
-    camTimer = setInterval(camProcess, 33);
+    addToast('📷 正在加载手指识别模型…');
+    loadHands();
+    camTimer = setInterval(camProcess, 50);
   }).catch(function(e){
     addToast('📷 摄像头不可用（微信内请用系统浏览器打开）');
   });
 }
-function camProcess(){
-  if (!camOn || !camVideo || camVideo.readyState < 2) return;
+const HAND_LINKS = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
+function camDrawHand(pctx, lm){
+  const w = pctx.canvas.width, h = pctx.canvas.height;
+  pctx.strokeStyle = 'rgba(255,255,255,0.85)';
+  pctx.lineWidth = 1.6;
+  for (let i = 0; i < HAND_LINKS.length; i++) {
+    const a = lm[HAND_LINKS[i][0]], b = lm[HAND_LINKS[i][1]];
+    pctx.beginPath();
+    pctx.moveTo((1 - a.x) * w, a.y * h);
+    pctx.lineTo((1 - b.x) * w, b.y * h);
+    pctx.stroke();
+  }
+  pctx.fillStyle = 'rgba(255,255,255,0.9)';
+  for (let i = 0; i < lm.length; i++) {
+    pctx.beginPath();
+    pctx.arc((1 - lm[i].x) * w, lm[i].y * h, 2.2, 0, Math.PI * 2);
+    pctx.fill();
+  }
+}
+function frameDiffTip(){
   if (!camBuf) {
     camBuf = document.createElement('canvas');
-    camBuf.width = camW; camBuf.height = camH;
+    camBuf.width = 64; camBuf.height = 48;
     camBufCtx = camBuf.getContext('2d');
   }
-  const pv = document.getElementById('camPreview');
-  const pctx = pv.getContext('2d');
-  // 镜像绘制（画面与手指方向一致）
   camBufCtx.save();
-  camBufCtx.translate(camW, 0); camBufCtx.scale(-1, 1);
-  camBufCtx.drawImage(camVideo, 0, 0, camW, camH);
+  camBufCtx.translate(64, 0); camBufCtx.scale(-1, 1);
+  camBufCtx.drawImage(camVideo, 0, 0, 64, 48);
   camBufCtx.restore();
   let img;
-  try { img = camBufCtx.getImageData(0, 0, camW, camH); } catch(e){ return; }
+  try { img = camBufCtx.getImageData(0, 0, 64, 48); } catch(e){ return null; }
   const d = img.data;
-  const gray = new Float32Array(camW * camH);
-  for (let i = 0; i < camW * camH; i++) {
-    gray[i] = (d[i * 4] + d[i * 4 + 1] + d[i * 4 + 2]) / 3;
-  }
-  // 帧差法找出运动（手指）质心
+  const gray = new Float32Array(64 * 48);
+  for (let i = 0; i < 64 * 48; i++) gray[i] = (d[i*4] + d[i*4+1] + d[i*4+2]) / 3;
+  let tip = null;
   if (camPrevGray) {
     let sx = 0, sy = 0, sw = 0;
-    for (let y = 2; y < camH - 2; y++) {
-      for (let x = 2; x < camW - 2; x++) {
-        const i = y * camW + x;
-        const diff = Math.abs(gray[i] - camPrevGray[i]);
-        if (diff > 20) { const w = diff; sx += x * w; sy += y * w; sw += w; }
-      }
+    for (let y = 2; y < 46; y++) for (let x = 2; x < 62; x++) {
+      const i = y * 64 + x;
+      const diff = Math.abs(gray[i] - camPrevGray[i]);
+      if (diff > 20) { const w = diff; sx += x * w; sy += y * w; sw += w; }
     }
-    if (sw > 80) {
-      camCentroid = { x: sx / sw / camW, y: sy / sw / camH };
-      camLastSeen = performance.now();
-    }
+    if (sw > 80) tip = { x: sx / sw / 64, y: sy / sw / 48 };
   }
   camPrevGray = gray;
-  // 控制映射：质心左右 = 转向；从下越过 30% 线 = 跳跃
-  if (camCentroid && performance.now() - camLastSeen < 800) {
-    const nx = camCentroid.x, ny = camCentroid.y;
-    camDir = nx < 0.36 ? -1 : (nx > 0.64 ? 1 : 0);
-    if (!camCrossArmed && ny > 0.58) camCrossArmed = true;
-    if (camCrossArmed && ny < 0.28 && state.mode === 'playing') {
+  return tip;
+}
+function camProcess(){
+  if (!camOn || !camVideo || camVideo.readyState < 2) return;
+  const pv = document.getElementById('camPreview');
+  const pctx = pv.getContext('2d');
+  const now = performance.now();
+  let tip = null;
+  if (camHands && camHands !== 'fallback') {
+    try {
+      const res = camHands.detectForVideo(camVideo, now);
+      if (res.landmarks && res.landmarks.length) {
+        tip = { x: 1 - res.landmarks[0][8].x, y: res.landmarks[0][8].y };
+        camDrawHand(pctx, res.landmarks[0]);
+      }
+    } catch(e){}
+  } else if (camHands === 'fallback') {
+    tip = frameDiffTip();
+  }
+  if (tip) { camTip = tip; camTipSeen = now; }
+  // 控制映射：指尖 x = 转向；从下越过 30% 线 = 跳跃
+  if (camTip && now - camTipSeen < 400) {
+    camDir = camTip.x < 0.36 ? -1 : (camTip.x > 0.64 ? 1 : 0);
+    if (!camCrossArmed && camTip.y > 0.60) camCrossArmed = true;
+    if (camCrossArmed && camTip.y < 0.30 && state.mode === 'playing') {
       tryJump();
       camCrossArmed = false;
     }
   } else {
     camDir = 0;
   }
-  // 预览画面 + 跳跃线 + 手指光点
+  // 预览：镜像视频 + 跳跃线 + 指尖光点
   pctx.save();
   pctx.clearRect(0, 0, pv.width, pv.height);
   pctx.translate(pv.width, 0); pctx.scale(-1, 1);
@@ -578,14 +632,14 @@ function camProcess(){
   pctx.setLineDash([4, 4]);
   pctx.beginPath(); pctx.moveTo(0, pv.height * 0.30); pctx.lineTo(pv.width, pv.height * 0.30); pctx.stroke();
   pctx.setLineDash([]);
-  pctx.fillStyle = 'rgba(255,255,255,0.65)';
+  pctx.fillStyle = 'rgba(255,255,255,0.7)';
   pctx.font = '9px sans-serif';
   pctx.fillText('↑ 上挑跳跃', 3, pv.height * 0.30 - 4);
-  if (camCentroid && performance.now() - camLastSeen < 800) {
+  if (camTip && now - camTipSeen < 400) {
     pctx.fillStyle = '#ff3b30';
-    pctx.beginPath(); pctx.arc(camCentroid.x * pv.width, camCentroid.y * pv.height, 7, 0, Math.PI * 2); pctx.fill();
+    pctx.beginPath(); pctx.arc(camTip.x * pv.width, camTip.y * pv.height, 7, 0, Math.PI * 2); pctx.fill();
     pctx.strokeStyle = '#ffffff'; pctx.lineWidth = 2;
-    pctx.beginPath(); pctx.arc(camCentroid.x * pv.width, camCentroid.y * pv.height, 7, 0, Math.PI * 2); pctx.stroke();
+    pctx.beginPath(); pctx.arc(camTip.x * pv.width, camTip.y * pv.height, 7, 0, Math.PI * 2); pctx.stroke();
   }
 }
 
