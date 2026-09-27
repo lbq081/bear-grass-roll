@@ -68,6 +68,9 @@
     background:linear-gradient(135deg,#ffb03a,#ff7a18); border-radius:999px; padding:14px 42px;
     box-shadow:0 6px 0 #d9640f, 0 12px 22px rgba(0,0,0,0.25); letter-spacing:2px; }
   .btn:active { transform:translateY(5px); box-shadow:0 1px 0 #d9640f; }
+  .btn.small { font-size:15px; padding:11px 26px; letter-spacing:1px; margin-top:12px;
+    background:linear-gradient(135deg,#5ac8fa,#2f7cf6); box-shadow:0 5px 0 #1f5cb8, 0 10px 18px rgba(0,0,0,0.22); }
+  .btn.small:active { transform:translateY(4px); box-shadow:0 1px 0 #1f5cb8; }
   #finalStats { color:#6b4b2a; font-size:16px; line-height:2; margin:6px 0 18px; }
   #finalStats .big { font-size:26px; font-weight:800; color:#e0701a; }
   #menuBest { margin-top:14px; color:#b08a5c; font-size:13px; }
@@ -87,6 +90,7 @@
         <div class="ebar"><div id="efill"></div></div>
       </div>
       <div class="right">
+        <div id="powerHud" class="pill hidden"><span id="powerIcon">⭐</span><span id="powerT">3s</span></div>
         <div class="pill"><span id="meters">0 米</span></div>
         <div class="pill"><span id="honeyc">🍯×0</span></div>
         <button id="btnMute" class="hudbtn">🔊</button>
@@ -106,10 +110,11 @@
       <span class="bear">🐻</span>
       <h1>草地打滚的小熊</h1>
       <p class="sub">在软软的草地上滚来滚去～<br>收集 🍯 和 🍓 补充体力，<br>躲开大石头、滚石和捣蛋的小蜜蜂！</p>
-      <p class="hint">🕹️ 左下角 <b>◀ ▶</b> 按钮控制方向<br>🔘 右下角「跳!」跳跃（轻点屏幕也可以跳）<br>⚠️ 红色 <b>!</b> / 白色弧线 = 起跳时机<br>🔥 连续收集 = 连击加分<br>🖥 电脑：← → 方向，空格跳跃</p>
+      <p class="hint">🕹️ 左下角 <b>◀ ▶</b> 按钮控制方向<br>🔘 右下角「跳!」跳跃（空中再点 = 二段跳）<br>⚠️ 红色 <b>!</b> / 白色弧线 = 起跳时机<br>✨ 收集 ⭐🧲🍀 道具、追 🦋 蝴蝶<br>🖥 电脑：← → 方向，空格跳跃</p>
       <button id="btnStart" class="btn">开始打滚 🐾</button>
       <div id="menuBest"></div>
-      <div class="ver">v4 · 快乐版（新按键布局 · 音乐 · 鼓励彩蛋）</div>
+      <div id="menuAch" class="ver"></div>
+      <div class="ver">v5 · 星光版（二段跳 · 道具 · 成就 · 蝴蝶）</div>
     </div>
   </div>
 
@@ -128,7 +133,8 @@
       <h1 id="overTitle">滚不动啦～</h1>
       <div id="finalStats"></div>
       <button id="btnRestart" class="btn">再滚一次 🔄</button>
-      <div class="tip">TIP：跟着白色弧线起跳，沟壑再也不怕啦～ 🌈</div>
+      <button id="btnCopy" class="btn small">📋 复制成绩，去炫耀!</button>
+      <div class="tip">TIP：空中再点一次可以二段跳哦～ 🌈</div>
     </div>
   </div>
 </div>
@@ -162,6 +168,13 @@ canvas.addEventListener('contextmenu', function(e){ e.preventDefault(); });
 /* ================= 工具函数 ================= */
 function clamp(v, a, b){ return v < a ? a : (v > b ? b : v); }
 function lerp(a, b, t){ return a + (b - a) * t; }
+function hexLerp(c1, c2, t){
+  const a = parseInt(c1.slice(1), 16), b = parseInt(c2.slice(1), 16);
+  const r = ((a >> 16) + (((b >> 16) - (a >> 16)) * t)) | 0;
+  const g = (((a >> 8) & 255) + ((((b >> 8) & 255) - ((a >> 8) & 255)) * t)) | 0;
+  const bl = ((a & 255) + (((b & 255) - (a & 255)) * t)) | 0;
+  return 'rgb(' + r + ',' + g + ',' + bl + ')';
+}
 function hash(n){                                  // 确定性伪随机
   n = Math.imul(n | 0, 374761393) + 668265263;
   n = Math.imul((n ^ (n >>> 13)), 1274126177);
@@ -232,13 +245,22 @@ function sfx(name){
     case 'land':  tone(130,70,.09,'triangle',.18); noise(.08,.15,400); break;
     case 'sting': tone(250,90,.30,'sawtooth',.26); break;
     case 'over':  tone(392,392,.20,'sine',.26); tone(330,330,.20,'sine',.26,.22); tone(262,262,.45,'sine',.26,.44); break;
+    case 'djump': tone(500,950,.14,'sine',.24); break;
+    case 'star':  tone(784,784,.08,'triangle',.22); tone(988,988,.08,'triangle',.22,.07); tone(1175,1175,.14,'triangle',.24,.14); break;
+    case 'magnet': tone(660,990,.12,'sawtooth',.15); break;
+    case 'clover': tone(523,523,.10,'sine',.20); tone(659,659,.10,'sine',.20,.08); tone(784,784,.16,'sine',.22,.16); break;
+    case 'bfly':  tone(1200,1700,.12,'sine',.18); break;
+    case 'ach':   tone(784,784,.10,'triangle',.22); tone(988,988,.10,'triangle',.22,.09); tone(1319,1319,.20,'triangle',.24,.18); break;
+    case 'heart': tone(95,60,.10,'sine',.26); tone(75,50,.12,'sine',.20,.15); break;
   }
 }
 
 /* ================= 背景音乐（音乐盒） ================= */
 const MELODY = [
-  [523,1],[659,1],[784,1],[880,1],[1047,1],[880,1],[784,1],[659,1],
-  [523,1],[659,1],[784,1],[880,1],[784,1],[659,1],[587,1],[523,2]
+  [659,1],[784,1],[880,1],[784,1],[659,1],[784,1],[880,1],[1047,2],
+  [988,1],[880,1],[784,1],[880,1],[784,1],[659,1],[587,1],[659,2],
+  [523,1],[659,1],[784,1],[659,1],[880,1],[784,1],[659,1],[523,2],
+  [587,1],[659,1],[698,1],[587,1],[659,1],[587,1],[523,1],[523,2]
 ];
 let musicTimer = null;
 function scheduleMusic(){
@@ -283,6 +305,7 @@ function inGap(x){
 function comboMult(){ return Math.min(10, Math.max(1, combo)); }
 function comboHit(){
   combo++; comboTime = 3.5;
+  if (combo > stats.bestCombo) stats.bestCombo = combo;
   if (combo === 3) addToast('太棒了! 🔥');
   else if (combo === 5) addToast('超厉害! ✨');
   else if (combo === 8) addToast('无敌小熊! 👑');
@@ -308,9 +331,41 @@ const state = {
 };
 try { state.best = parseInt(localStorage.getItem('bearBest') || '0', 10) || 0; } catch(e){}
 
+/* ================= 成就系统 ================= */
+const ACH = [
+  { id:'firstRoll', name:'初次打滚', desc:'单局滚出 10 米', icon:'🌱', check:function(s){ return s.bestRunMeters >= 10; } },
+  { id:'flowers',   name:'压花小能手', desc:'累计压花 50 朵', icon:'🌸', check:function(s){ return s.totalFlowers >= 50; } },
+  { id:'jumps',     name:'跳跃之星',   desc:'累计跳跃 100 次', icon:'⭐', check:function(s){ return s.totalJumps >= 100; } },
+  { id:'combo10',   name:'连击大师',   desc:'单局连击达到 ×10', icon:'🔥', check:function(s){ return s.bestCombo >= 10; } },
+  { id:'honey20',   name:'蜂蜜收藏家', desc:'累计收集 20 罐蜂蜜', icon:'🍯', check:function(s){ return s.totalHoney >= 20; } },
+  { id:'run500',    name:'飞毛腿',     desc:'单局滚出 500 米', icon:'🏃', check:function(s){ return s.bestRunMeters >= 500; } },
+  { id:'run1000',   name:'草地之王',   desc:'单局滚出 1000 米', icon:'👑', check:function(s){ return s.bestRunMeters >= 1000; } }
+];
+let stats = { totalFlowers:0, totalJumps:0, totalHoney:0, bestCombo:0, bestRunMeters:0, ach:[] };
+try {
+  const s = JSON.parse(localStorage.getItem('bearStats') || 'null');
+  if (s) stats = Object.assign(stats, s);
+} catch(e){}
+function saveStats(){ try { localStorage.setItem('bearStats', JSON.stringify(stats)); } catch(e){} }
+function checkAch(){
+  let got = false;
+  for (let i = 0; i < ACH.length; i++) {
+    const a = ACH[i];
+    if (stats.ach.indexOf(a.id) < 0 && a.check(stats)) {
+      stats.ach.push(a.id);
+      newAch.push(a);
+      addToast('🏅 成就解锁：' + a.name + '!');
+      sfx('ach');
+      got = true;
+    }
+  }
+  if (got) saveStats();
+}
+
 let bear, honey, picked, playTime, lastFi, meters;
 let combo, comboTime, comboBreakT, points, score, coyote, jumpBuf;
 let items, rocks, puddles, boulders, gaps, trail, marks, ps, bees;
+let powers, powerTimer, butterflies, bflyTimer, heartTimer, newAch, lastResult;
 let nextItemX, nextRockX, nextPuddleX, nextGapX, spawnCount, beeTimer, boulderTimer;
 let camX = 0, camY = 0, shake = 0;
 let eyeMode = 'idle';
@@ -322,7 +377,8 @@ for (let i = 0; i < 5; i++) {
 }
 
 function resetGame(){
-  bear = { x: STARTX, y: 0, vx: 0, vy: 0, airborne: false, falling: false, overGapT: 0, squash: 0, angle: 0, energy: 100, groundY: terrainY(STARTX) };
+  bear = { x: STARTX, y: 0, vx: 0, vy: 0, airborne: false, falling: false, overGapT: 0, squash: 0, stretch: 0,
+    jumps: 0, starT: 0, magnetT: 0, shieldT: 0, angle: 0, energy: 100, groundY: terrainY(STARTX) };
   honey = 0;
   picked = new Set();
   playTime = 0;
@@ -331,6 +387,8 @@ function resetGame(){
   combo = 0; comboTime = 0; comboBreakT = 0; points = 0; score = 0; coyote = 0; jumpBuf = 0;
   floats = []; toastTxt = null; toastT = 0; recordShown = false; metersMilestone = 0;
   items = []; rocks = []; puddles = []; boulders = []; gaps = [];
+  powers = []; butterflies = []; powerTimer = 16; bflyTimer = 12; heartTimer = 1.1;
+  newAch = []; lastResult = { dist: 0, total: 0 };
   trail = [[]]; marks = []; ps = []; bees = [];
   beeTimer = 15; boulderTimer = 40;
   nextItemX = 700; nextRockX = 640; nextPuddleX = 1050; nextGapX = 2600; spawnCount = 0;
@@ -521,12 +579,19 @@ function gameOver(reason){
     try { localStorage.setItem('bearBest', String(total)); } catch(e){}
   }
   document.getElementById('overTitle').textContent = (reason === 'pit') ? '掉进沟里啦～' : '滚不动啦～';
+  lastResult = { dist: dist, total: total };
+  stats.bestRunMeters = Math.max(stats.bestRunMeters, dist);
+  saveStats();
+  const achLine = newAch.length
+    ? '<div class="record">🏅 ' + newAch.map(function(a){ return a.icon + a.name; }).join(' · ') + '</div>'
+    : '';
   document.getElementById('finalStats').innerHTML =
     (isRecord ? '<div class="record">🎉 新纪录！</div>' : '') +
+    achLine +
     '<div>滚了 <b>' + dist + '</b> 米 · 蜂蜜 <b>' + honey + '</b> 罐 · 压花 <b>' + picked.size + '</b> 朵</div>' +
     '<div>技巧分 <b>' + points + '</b>（含连击加成）</div>' +
     '<div class="big">总分 ' + total + '</div>' +
-    '<div>最高纪录 ' + state.best + '</div>';
+    '<div>最高纪录 ' + state.best + ' · 🏅 ' + stats.ach.length + '/' + ACH.length + '</div>';
   document.getElementById('over').classList.remove('hidden');
 }
 
@@ -535,18 +600,30 @@ function tryJump(){
   if (bear.airborne) {
     if (coyote > 0) {
       // 土狼时间：离地瞬间仍可起跳
+    } else if (bear.jumps < 1) {
+      // 二段跳
+      bear.jumps = 1;
+      bear.vy = -470;
+      bear.stretch = 0.22;
+      sfx('djump');
+      addSparkle(bear.x, bear.y + R * 0.7, 4);
+      stats.totalJumps++;
+      return;
     } else {
       jumpBuf = 0.18;   // 跳跃缓冲：落地瞬间自动起跳
       return;
     }
   }
   bear.airborne = true;
+  bear.jumps = 0;
   bear.vy = -520;
+  bear.stretch = 0.22;
   coyote = 0;
   jumpBuf = 0;
   sfx('jump');
   addDust(bear.x, bear.groundY, 4, 0);
   trail.push([]);
+  stats.totalJumps++;
 }
 
 function updatePlay(dt){
@@ -561,6 +638,10 @@ function updatePlay(dt){
   if (comboTime <= 0) combo = 0;
   comboBreakT = Math.max(0, comboBreakT - dt);
   bear.squash = Math.max(0, bear.squash - dt * 2.5);
+  bear.stretch = Math.max(0, bear.stretch - dt * 3);
+  bear.starT = Math.max(0, bear.starT - dt);
+  bear.magnetT = Math.max(0, bear.magnetT - dt);
+  bear.shieldT = Math.max(0, bear.shieldT - dt);
   for (let i = floats.length - 1; i >= 0; i--) {
     const f = floats[i];
     f.life -= dt; f.y -= 46 * dt;
@@ -569,7 +650,8 @@ function updatePlay(dt){
   if (toastT > 0) toastT -= dt; else toastTxt = null;
 
   // 物理
-  bear.vx += dir * ACC * dt;
+  const spdMul = bear.starT > 0 ? 1.35 : 1;
+  bear.vx += dir * ACC * spdMul * dt;
   if (!bear.airborne) {
     bear.vx += slope * 430 * dt;      // 坡道影响
     bear.vx -= bear.vx * 1.15 * dt;   // 地面摩擦
@@ -583,7 +665,7 @@ function updatePlay(dt){
     }
     if (inPuddle) bear.vx -= bear.vx * 3.2 * dt;
   }
-  bear.vx = clamp(bear.vx, -maxS, maxS);
+  bear.vx = clamp(bear.vx, -maxS * spdMul, maxS * spdMul);
   bear.x += bear.vx * dt;
   if (bear.x < STARTX) { bear.x = STARTX; if (bear.vx < 0) bear.vx = 0; }
   bear.groundY = terrainY(bear.x);
@@ -608,6 +690,7 @@ function updatePlay(dt){
       bear.airborne = false;
       bear.vy = 0;
       bear.squash = 0.18;
+      bear.jumps = 0;
       sfx('land');
       addDust(bear.x, bear.groundY, 3, Math.sign(bear.vx) || 1);
       trail.push([]);
@@ -620,16 +703,34 @@ function updatePlay(dt){
   }
   bear.angle += (bear.vx / R) * dt;
 
-  // 体力消耗（越滚越累，水坑更费劲，随时间加速）
-  bear.energy -= (2.3 + (Math.abs(bear.vx) > 40 ? 0.5 : 0) + (inPuddle ? 1.5 : 0)) * diff * dt;
+  // 体力消耗（四叶草护盾期间不掉体力）
+  if (bear.shieldT <= 0) {
+    bear.energy -= (2.3 + (Math.abs(bear.vx) > 40 ? 0.5 : 0) + (inPuddle ? 1.5 : 0)) * diff * dt;
+  }
   if (bear.energy <= 0) { bear.energy = 0; gameOver('energy'); return; }
+
+  // 低体力心跳警报
+  if (bear.energy < 25) {
+    heartTimer -= dt;
+    if (heartTimer <= 0) { heartTimer = 1.1; sfx('heart'); }
+  } else {
+    heartTimer = 1.1;
+  }
 
   // 水花与尘土
   if (inPuddle && Math.random() < 0.25) addSplash(bear.x, bear.y - 6, 1);
   if (!bear.airborne && Math.abs(bear.vx) > 260 && Math.random() < 0.5) addDust(bear.x, bear.groundY, 1, Math.sign(bear.vx) || 1);
+  // 无敌冲刺彩虹拖尾
+  if (bear.starT > 0 && Math.random() < 0.7) {
+    const cols = ['#ff5f6d', '#ffc371', '#7ae582', '#6fc3ff', '#d58cff'];
+    ps.push({ type:'spark', x:bear.x - R * 0.9, y:bear.y + (Math.random() - 0.5) * R,
+      vx:-60, vy:(Math.random() - 0.5) * 60, grav:0, life:0.5, max:0.5, rot:0, vr:0, seed:0,
+      col:cols[(Math.random() * 5) | 0] });
+  }
 
-  // 石头碰撞
-  for (let i = 0; i < rocks.length; i++) {
+  // 石头碰撞（无敌冲刺时直接碾过）
+  if (bear.starT <= 0) {
+    for (let i = 0; i < rocks.length; i++) {
     const rk = rocks[i];
     const cy = terrainY(rk.x) - rk.r * 0.82;
     const dx = bear.x - rk.x, dy = bear.y - cy;
@@ -646,8 +747,9 @@ function updatePlay(dt){
       if (bear.energy <= 0) { gameOver('energy'); return; }
     }
   }
+  }
 
-  // 滚石（40 秒后迎面滚来）
+  // 滚石（45 秒后迎面滚来）
   boulderTimer -= dt;
   if (boulderTimer <= 0) {
     boulderTimer = 11 + Math.random() * 8;
@@ -661,6 +763,7 @@ function updatePlay(dt){
     bl.x += bl.vx * dt;
     bl.angle += (bl.vx / bl.r) * dt;
     if (bl.x < bear.x - viewW || overGap(bl.x)) { boulders.splice(i, 1); continue; }
+    if (bear.starT > 0) continue;   // 无敌冲刺直接穿过
     const cy = terrainY(bl.x) - bl.r * 0.85;
     const dx = bear.x - bl.x, dy = bear.y - cy;
     const d = Math.sqrt(dx * dx + dy * dy);
@@ -682,12 +785,14 @@ function updatePlay(dt){
     const it = items[i];
     if (it.taken) continue;
     const iy = terrainY(it.x) - 34 + Math.sin(state.simT * 2 + it.t) * 4;
+    if (bear.magnetT > 0 && Math.abs(it.x - bear.x) < 300) it.x -= Math.sign(it.x - bear.x) * 260 * dt;
     const dx = bear.x - it.x, dy = bear.y - iy;
     if (Math.abs(dx) < R + 20 && Math.abs(dy) < R + 24) {
       it.taken = true;
       if (it.type === 'honey') {
         bear.energy = Math.min(100, bear.energy + 30);
         honey++;
+        stats.totalHoney++;
         comboHit();
         points += 20 * comboMult();
         sfx('honey');
@@ -710,6 +815,7 @@ function updatePlay(dt){
     lastFi = fi;
     if (!bear.airborne && !inGap(fi * 30) && flowerExists(fi) && !picked.has(fi)) {
       picked.add(fi);
+      stats.totalFlowers++;
       bear.energy = Math.min(100, bear.energy + 1);
       comboHit();
       points += 1 * comboMult();
@@ -750,7 +856,7 @@ function updatePlay(dt){
       const targetY = bear.y * 0.85 + Math.sin(state.simT * 6 + b.ph) * 30;
       b.y += (targetY - b.y) * Math.min(1, 2.5 * dt);
       const d = Math.sqrt((bear.x - b.x) * (bear.x - b.x) + (bear.y - b.y) * (bear.y - b.y));
-      if (d < R + 16) {
+      if (d < R + 16 && bear.starT <= 0) {
         b.leave = true; b.leaveT = 1.4;
         bear.energy = Math.max(0, bear.energy - 10);
         bear.vx = (bear.x > b.x ? 1 : -1) * 200;
@@ -764,6 +870,57 @@ function updatePlay(dt){
       b.x += (bear.x > b.x ? -1 : 1) * 150 * dt;
       b.y -= 170 * dt;
       if (b.leaveT <= 0) bees.splice(i, 1);
+    }
+  }
+
+  // 特殊道具（⭐无敌冲刺 / 🧲磁铁 / 🍀四叶草）
+  powerTimer -= dt;
+  if (powerTimer <= 0) {
+    powerTimer = 20 + Math.random() * 10;
+    if (powers.length < 1) {
+      const types = ['star', 'magnet', 'clover'];
+      powers.push({ type: types[(Math.random() * 3) | 0], x: bear.x + viewW * 1.2,
+        y: terrainY(bear.x) - 80 - Math.random() * 50, t: Math.random() * 6.28 });
+    }
+  }
+  for (let i = powers.length - 1; i >= 0; i--) {
+    const p = powers[i];
+    if (p.x < bear.x - viewW) { powers.splice(i, 1); continue; }
+    const iy = terrainY(p.x) - 55 + Math.sin(state.simT * 2 + p.t) * 10;
+    const dx = bear.x - p.x, dy = bear.y - iy;
+    if (Math.abs(dx) < R + 26 && Math.abs(dy) < R + 30) {
+      powers.splice(i, 1);
+      if (p.type === 'star') { bear.starT = 3.5; sfx('star'); addToast('⭐ 无敌冲刺!'); }
+      else if (p.type === 'magnet') { bear.magnetT = 6; sfx('magnet'); addToast('🧲 磁铁吸引!'); }
+      else { bear.energy = Math.min(100, bear.energy + 15); bear.shieldT = 5; sfx('clover'); addToast('🍀 幸运四叶草!'); }
+      addSparkle(p.x, iy, 12);
+    }
+  }
+
+  // 蝴蝶（会逃跑的加分彩蛋）
+  bflyTimer -= dt;
+  if (bflyTimer <= 0) {
+    bflyTimer = 14 + Math.random() * 8;
+    if (butterflies.length < 2) {
+      butterflies.push({ x: bear.x + viewW * 1.1, baseY: terrainY(bear.x) - 110 - Math.random() * 80,
+        ph: Math.random() * 6.28, flee: false, taken: false });
+    }
+  }
+  for (let i = butterflies.length - 1; i >= 0; i--) {
+    const bf = butterflies[i];
+    if (bf.x < bear.x - viewW) { butterflies.splice(i, 1); continue; }
+    bf.x -= (bf.flee ? 240 : 55) * dt;
+    bf.y = bf.baseY + Math.sin(state.simT * 3 + bf.ph) * 42;
+    if (!bf.flee && Math.abs(bf.x - bear.x) < 260) bf.flee = true;
+    const d = Math.sqrt((bear.x - bf.x) * (bear.x - bf.x) + (bear.y - bf.y) * (bear.y - bf.y));
+    if (!bf.taken && d < R + 22) {
+      bf.taken = true;
+      comboHit();
+      points += 10 * comboMult();
+      sfx('bfly');
+      addSparkle(bf.x, bf.y, 8);
+      addFloat(bf.x, bf.y - 20, '+' + (10 * comboMult()), '#d58cff');
+      butterflies.splice(i, 1);
     }
   }
 
@@ -783,6 +940,8 @@ function updatePlay(dt){
 
   meters = Math.max(0, (bear.x - STARTX) / 48);
   score = Math.floor(meters) + points;
+  stats.bestRunMeters = Math.max(stats.bestRunMeters, Math.floor(meters));
+  checkAch();
   const mi = Math.floor(meters / 100);
   if (mi > metersMilestone) { metersMilestone = mi; addToast(mi * 100 + ' 米啦! 🎉'); }
   if (!recordShown && state.best > 0 && score > state.best) { recordShown = true; addToast('🏆 打破纪录啦!'); }
@@ -805,10 +964,11 @@ function updateCamera(dt){
 
 /* ================= 绘制 ================= */
 function drawSky(){
+  const shift = Math.min(1, playTime / 240) * 0.85;
   const g = ctx.createLinearGradient(0, camY, 0, camY + viewH);
-  g.addColorStop(0, '#8ed0f2');
-  g.addColorStop(0.55, '#b8e4f7');
-  g.addColorStop(1, '#dff3e8');
+  g.addColorStop(0, hexLerp('#8ed0f2', '#ff9e6d', shift));
+  g.addColorStop(0.55, hexLerp('#b8e4f7', '#ffc98a', shift));
+  g.addColorStop(1, hexLerp('#dff3e8', '#ffe0b8', shift));
   ctx.fillStyle = g;
   ctx.fillRect(camX - 50, camY - 50, viewW + 100, viewH + 120);
 }
@@ -1073,6 +1233,56 @@ function drawBee(b){
   ctx.beginPath(); ctx.arc(7 * s, -3, 1.4, 0, Math.PI * 2); ctx.fill();
   ctx.restore();
 }
+function drawButterfly(bf){
+  const flap = Math.sin(state.t * 18 + bf.ph) * 0.7;
+  ctx.save();
+  ctx.translate(bf.x, bf.y);
+  ctx.fillStyle = 'rgba(213,140,255,0.85)';
+  ctx.beginPath(); ctx.ellipse(-7, -3, 8, 5 + flap * 2, -0.5 - flap * 0.4, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(7, -3, 8, 5 + flap * 2, 0.5 + flap * 0.4, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = 'rgba(255,170,220,0.9)';
+  ctx.beginPath(); ctx.ellipse(-5, 2, 6, 4, -0.4, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(5, 2, 6, 4, 0.4, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#5a3b2a';
+  ctx.beginPath(); ctx.ellipse(0, 0, 2.5, 7, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+function drawPower(p){
+  const y = terrainY(p.x) - 55 + Math.sin(state.simT * 2 + p.t) * 10;
+  ctx.save();
+  ctx.translate(p.x, y);
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.beginPath(); ctx.arc(0, 0, 24 + Math.sin(state.t * 6) * 3, 0, Math.PI * 2); ctx.fill();
+  if (p.type === 'star') {
+    ctx.fillStyle = '#ffd23f';
+    ctx.strokeStyle = '#e09a1a'; ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let k = 0; k < 10; k++) {
+      const ang = -Math.PI / 2 + k * Math.PI / 5;
+      const rr = k % 2 === 0 ? 15 : 7;
+      const px = Math.cos(ang) * rr, py = Math.sin(ang) * rr;
+      if (k === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+  } else if (p.type === 'magnet') {
+    ctx.strokeStyle = '#e0392e'; ctx.lineWidth = 7;
+    ctx.beginPath(); ctx.arc(0, 0, 11, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = '#e0392e';
+    ctx.fillRect(-11, 2, 7, -12);
+    ctx.fillRect(4, 2, 7, -12);
+  } else {
+    ctx.fillStyle = '#5cb85c';
+    for (let k = 0; k < 4; k++) {
+      const a = k * Math.PI / 2 + Math.PI / 4;
+      ctx.beginPath();
+      ctx.ellipse(Math.cos(a) * 9, Math.sin(a) * 9, 7, 4.5, a, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = '#8a5a30';
+    ctx.beginPath(); ctx.arc(0, 0, 3, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+}
 function drawBear(){
   const r = R, x = bear.x, y = bear.y;
   const airH = Math.max(0, (bear.groundY - R) - bear.y);
@@ -1083,6 +1293,7 @@ function drawBear(){
   ctx.translate(x, y);
   ctx.rotate(bear.angle);
   if (bear.squash > 0) ctx.scale(1 + bear.squash * 0.4, 1 - bear.squash * 0.35);
+  if (bear.stretch > 0) ctx.scale(1 - bear.stretch * 0.25, 1 + bear.stretch * 0.3);
   ctx.lineWidth = 3; ctx.strokeStyle = '#6b4523';
   for (let si = 0; si < 2; si++) {
     const s = si === 0 ? -1 : 1;
@@ -1211,12 +1422,25 @@ function drawWorld(){
   for (let i = 0; i < puddles.length; i++) drawPuddle(puddles[i]);
   for (let i = 0; i < rocks.length; i++) drawRock(rocks[i]);
   for (let i = 0; i < boulders.length; i++) drawBoulder(boulders[i]);
+  for (let i = 0; i < powers.length; i++) drawPower(powers[i]);
   for (let i = 0; i < items.length; i++) {
     if (items[i].taken) continue;
     if (items[i].type === 'berry') drawBerry(items[i]); else drawHoney(items[i]);
   }
   drawBear();
+  // 无敌冲刺光环 / 四叶草护盾环
+  if (bear.starT > 0) {
+    ctx.strokeStyle = 'rgba(255,215,90,' + (Math.min(1, bear.starT) * (0.5 + 0.3 * Math.sin(state.t * 10))) + ')';
+    ctx.lineWidth = 5;
+    ctx.beginPath(); ctx.arc(bear.x, bear.y, R + 9 + Math.sin(state.t * 8) * 3, 0, Math.PI * 2); ctx.stroke();
+  }
+  if (bear.shieldT > 0) {
+    ctx.strokeStyle = 'rgba(120,220,110,' + (Math.min(1, bear.shieldT) * 0.8) + ')';
+    ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(bear.x, bear.y, R + 7, 0, Math.PI * 2); ctx.stroke();
+  }
   for (let i = 0; i < bees.length; i++) drawBee(bees[i]);
+  for (let i = 0; i < butterflies.length; i++) drawButterfly(butterflies[i]);
   for (let i = i0; i <= i1; i++) drawBlade(i, false);
   drawParticles();
   if (state.mode === 'playing') drawWarnings();
@@ -1274,6 +1498,13 @@ function updateHUD(){
   elFill.style.background = 'linear-gradient(90deg,hsl(' + Math.round(bear.energy * 1.1) + ',80%,52%),hsl(' + Math.round(bear.energy * 1.1 + 18) + ',85%,45%))';
   elMeters.textContent = Math.floor(meters) + '米·' + score + '分';
   elHoney.textContent = '🍯×' + honey;
+  const pEl = document.getElementById('powerHud');
+  const pIco = document.getElementById('powerIcon');
+  const pT = document.getElementById('powerT');
+  if (bear.starT > 0) { pEl.classList.remove('hidden'); pIco.textContent = '⭐'; pT.textContent = Math.ceil(bear.starT) + 's'; }
+  else if (bear.magnetT > 0) { pEl.classList.remove('hidden'); pIco.textContent = '🧲'; pT.textContent = Math.ceil(bear.magnetT) + 's'; }
+  else if (bear.shieldT > 0) { pEl.classList.remove('hidden'); pIco.textContent = '🍀'; pT.textContent = Math.ceil(bear.shieldT) + 's'; }
+  else pEl.classList.add('hidden');
 }
 
 /* ================= 渲染循环 ================= */
@@ -1316,6 +1547,16 @@ function render(){
     ctx.fillStyle = '#5a3b1f';
     ctx.fillText('左下 ◀ ▶ 转向 · 右下「跳!」跳跃', W / 2, H - 179);
     ctx.restore();
+  }
+
+  // 低体力红晕警报
+  if (state.mode === 'playing' && bear.energy < 25 && bear.energy > 0) {
+    const a = (25 - bear.energy) / 25 * (0.30 + 0.12 * Math.sin(state.t * 6));
+    const vg = ctx.createRadialGradient(W / 2, H * 0.45, Math.min(W, H) * 0.35, W / 2, H * 0.5, Math.max(W, H) * 0.72);
+    vg.addColorStop(0, 'rgba(255,60,60,0)');
+    vg.addColorStop(1, 'rgba(255,40,40,' + a.toFixed(3) + ')');
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, W, H);
   }
 }
 let last = 0;
@@ -1399,6 +1640,24 @@ document.getElementById('btnMute').addEventListener('click', function(){
   this.textContent = muted ? '🔇' : '🔊';
   if (muted) stopMusic(); else if (state.mode === 'playing') startMusic();
 });
+document.getElementById('btnCopy').addEventListener('click', function(){
+  const t = '我在《草地打滚的小熊》滚了 ' + lastResult.dist + ' 米，总分 ' + lastResult.total + ' 分！🍯×' + honey + ' 快来挑战我～ 🐻';
+  const btn = this;
+  function done(){ btn.textContent = '已复制 ✓'; setTimeout(function(){ btn.textContent = '📋 复制成绩，去炫耀!'; }, 2000); }
+  function fallback(){
+    const ta = document.createElement('textarea');
+    ta.value = t;
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); done(); } catch(e2){}
+    document.body.removeChild(ta);
+  }
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(t).then(done, fallback);
+    } else fallback();
+  } catch(e){ fallback(); }
+});
 document.addEventListener('visibilitychange', function(){
   if (document.hidden) { doPause(); stopMusic(); }
 });
@@ -1410,6 +1669,8 @@ function initMenu(){
   setMode('menu');
   const mBest = document.getElementById('menuBest');
   mBest.textContent = state.best > 0 ? '🏆 最高纪录：' + state.best : '来创造你的第一份纪录吧～';
+  const mAch = document.getElementById('menuAch');
+  mAch.textContent = '🏅 成就 ' + stats.ach.length + '/' + ACH.length + '（' + ACH.filter(function(a){ return stats.ach.indexOf(a.id) < 0; }).length + ' 个待解锁）';
   document.getElementById('btnMute').textContent = muted ? '🔇' : '🔊';
 }
 resize();
