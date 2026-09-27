@@ -159,7 +159,7 @@
       <div class="steps">
         1️⃣ 把手伸到镜头前 ✋（自动校准中线）<br>
         2️⃣ 手指<b>左右移动</b> = 转向（越远越快）<br>
-        3️⃣ 手指<b>向上挑</b> 或 <b>握拳</b> = 跳跃
+        3️⃣ 手指<b>向上挑</b> = 跳 · 空中<b>握拳</b> = 二段跳
       </div>
       <button id="btnCamGo" class="btn">我懂啦，开始!</button>
     </div>
@@ -313,26 +313,50 @@ function sfx(name){
 
 /* ================= 背景音乐（音乐盒） ================= */
 const MELODY = [
-  [659,1],[784,1],[880,1],[784,1],[659,1],[784,1],[880,1],[1047,2],
-  [988,1],[880,1],[784,1],[880,1],[784,1],[659,1],[587,1],[659,2],
-  [523,1],[659,1],[784,1],[659,1],[880,1],[784,1],[659,1],[523,2],
-  [587,1],[659,1],[698,1],[587,1],[659,1],[587,1],[523,1],[523,2]
+  [523,0.5],[659,0.5],[784,1],[659,0.5],[784,0.5],[1047,1],
+  [880,0.5],[784,0.5],[659,1],[587,1],[659,1],
+  [659,1],[880,1],[1047,1],[880,0.5],[784,0.5],
+  [698,1],[880,1],[1047,1],[880,1],
+  [1047,0.5],[880,0.5],[784,1],[659,0.5],[523,0.5],[494,1],
+  [659,1],[587,1],[494,1],[587,1],
+  [523,0.5],[659,0.5],[784,0.5],[880,0.5],[1047,1],[880,1],
+  [784,1],[659,1],[523,2]
 ];
+const CHORDS = [262, 196, 220, 175];   // C G Am F
 const MELODY2 = [
   [220,0.5],[220,0.5],[262,0.5],[294,0.5],[330,1],[294,0.5],[262,0.5],[247,0.5],[262,0.5],[220,0.5],[196,0.5],[220,1],
   [220,0.5],[220,0.5],[262,0.5],[294,0.5],[330,1],[392,0.5],[330,0.5],[294,0.5],[262,0.5],[247,1],[220,2]
 ];
+const CHORDS2 = [220, 175, 196, 165];  // Am F G E
 let musicTimer = null;
 function scheduleMusic(){
   if (!actx || muted) return;
-  const mel = (boss && boss.state !== 'dead') ? MELODY2 : MELODY;
+  const battle = (boss && boss.state !== 'dead');
+  const mel = battle ? MELODY2 : MELODY;
+  const chords = battle ? CHORDS2 : CHORDS;
   const t0 = actx.currentTime + 0.05;
-  let t = 0;
+  let t = 0, beat = 0;
   for (let i = 0; i < mel.length; i++) {
     const n = mel[i];
+    const barIdx = (beat / 8 | 0) % chords.length;
+    const root = chords[barIdx];
+    const minor = battle ? (barIdx === 0 || barIdx === 3) : (barIdx === 2);
+    // 主旋律 + 低八度柔化
     tone(n[0], n[0], n[1] * 0.21, 'triangle', 0.10, t);
     tone(n[0] / 2, n[0] / 2, n[1] * 0.21, 'sine', 0.05, t);
+    // 高八度回声（八音盒的清脆感）
+    tone(n[0] * 2, n[0] * 2, n[1] * 0.14, 'sine', 0.03, t + 0.12);
+    // 低音声部
+    tone(root / 2, root / 2, n[1] * 0.21, 'sine', 0.06, t);
+    // 小节开头铺和弦垫
+    if (beat % 8 === 0) {
+      const third = root * (minor ? 1.2 : 1.25);
+      tone(root, root, 1.6, 'sine', 0.035, t);
+      tone(third, third, 1.6, 'sine', 0.030, t);
+      tone(root * 1.5, root * 1.5, 1.6, 'sine', 0.030, t);
+    }
     t += n[1] * 0.22;
+    beat += n[1];
   }
   musicTimer = setTimeout(scheduleMusic, Math.max(200, t * 1000 - 300));
 }
@@ -623,7 +647,7 @@ let camDir = 0, camTip = null, camTipSeen = 0, camCrossArmed = false;
 let camHands = null, camLoading = false;
 let camBuf = null, camBufCtx = null, camPrevGray = null;
 let camLastLm = null, camFistPrev = false, camGuideTimer = null;
-let camTipS = null, camTipPrevT = 0, camTipPrevY = 0, camJumpCd = 0;
+let camTipS = null, camTipPrevT = 0, camTipPrevY = 0, camTipPrevX = 0, camJumpCd = 0, camCamFlash = 0;
 let camCenterX = 0.5, camCalibN = 0, camCalibDone = false, camCalibSum = 0, camPalm = 0.12;
 
 function stopCam(){
@@ -694,7 +718,7 @@ function toggleCam(){
     return camVideo.play();
   }).then(function(){
     camOn = true; camCrossArmed = false; camPrevGray = null; camTip = null; camLastLm = null; camFistPrev = false;
-    camTipS = null; camTipPrevT = 0; camTipPrevY = 0; camJumpCd = 0;
+    camTipS = null; camTipPrevT = 0; camTipPrevY = 0; camTipPrevX = 0; camJumpCd = 0; camCamFlash = 0;
     camCenterX = 0.5; camCalibN = 0; camCalibDone = false; camCalibSum = 0; camPalm = 0.12;
     document.getElementById('camBox').classList.remove('hidden');
     document.getElementById('btnCam').textContent = '📷✓';
@@ -786,15 +810,15 @@ function camProcess(){
     camTip = tip; camTipSeen = now;
     if (!camTipS) camTipS = { x: tip.x, y: tip.y };
     else {
-      camTipS.x = camTipS.x * 0.45 + tip.x * 0.55;   // 平滑，消除抖动
-      camTipS.y = camTipS.y * 0.45 + tip.y * 0.55;
+      camTipS.x = camTipS.x * 0.30 + tip.x * 0.70;   // 更跟手
+      camTipS.y = camTipS.y * 0.30 + tip.y * 0.70;
     }
   } else {
     camTipPrevT = 0;
   }
   const fistEdge = fistNow && !camFistPrev;
   camFistPrev = fistNow;
-  // 控制映射（自动校准 + 模拟量转向 + 速度法跳跃）
+  // 控制映射（自动校准 + 模拟量转向 + 手势跳跃，互不干扰）
   if (camTip && now - camTipSeen < 800) {
     // 校准：前 1 秒记录手的自然位置作为中线
     if (!camCalibDone) {
@@ -805,38 +829,44 @@ function camProcess(){
         addToast('📷 校准完成：手指在中线不动 = 停');
       }
     }
-    // 模拟量转向：离中线越远滚得越快
+    // 模拟量转向：离中线越远滚得越快（响应更快）
     if (camCalibDone) {
       const target = clamp((camTipS.x - camCenterX) / 0.20, -1, 1);
-      camDir += (target - camDir) * 0.35;
+      camDir += (target - camDir) * 0.55;
       if (Math.abs(camDir) < 0.06) camDir = 0;
+      // 手指长时间停留在中线附近时，中线缓慢跟随校正（坐姿微调不再偏航）
+      if (Math.abs(camDir) < 0.12) {
+        camCenterX += (camTip.x - camCenterX) * 0.015;
+      }
     } else {
       camDir = 0;
     }
-    const nx = camTipS.x, ny = camTipS.y;
-    // 速度法：150ms 内上移超过手掌比例阈值即触发跳跃（自适应大手小手）
+    const ny = camTipS.y;
+    // 速度法：快速上挑触发跳跃（要求接近垂直，避免横移误触；200ms 冷却允许空中二段跳）
     const flickTh = clamp(camPalm * 0.55, 0.08, 0.25);
     const dtTip = (now - camTipPrevT) / 1000;
     if (camTipPrevT && dtTip > 0 && dtTip < 0.30) {
-      const rise = camTipPrevY - tip.y;   // 用原始值检测，更灵敏
-      if (rise > flickTh && state.mode === 'playing' && now - camJumpCd > 420) {
-        tryJump(); hideCamGuide(); camJumpCd = now;
+      const rise = camTipPrevY - tip.y;
+      const dxi = Math.abs(camTipPrevX - tip.x);
+      if (rise > flickTh && dxi < 0.14 && state.mode === 'playing' && now - camJumpCd > 200) {
+        tryJump(); hideCamGuide(); camJumpCd = now; camCamFlash = 0.35;
       }
     }
-    camTipPrevY = tip.y; camTipPrevT = now;
+    camTipPrevX = tip.x; camTipPrevY = tip.y; camTipPrevT = now;
     // 越线法（备份触发）
     if (!camCrossArmed && ny > 0.62) camCrossArmed = true;
-    if (camCrossArmed && ny < 0.30 && state.mode === 'playing' && now - camJumpCd > 420) {
-      tryJump(); hideCamGuide(); camJumpCd = now; camCrossArmed = false;
+    if (camCrossArmed && ny < 0.30 && state.mode === 'playing' && now - camJumpCd > 200) {
+      tryJump(); hideCamGuide(); camJumpCd = now; camCrossArmed = false; camCamFlash = 0.35;
     }
-    // 握拳法
-    if (fistEdge && state.mode === 'playing' && now - camJumpCd > 420) {
-      tryJump(); hideCamGuide(); camJumpCd = now;
+    // 握拳法：地面起跳 / 空中二段跳（边缘触发，几乎无冷却）
+    if (fistEdge && state.mode === 'playing' && now - camJumpCd > 150) {
+      tryJump(); hideCamGuide(); camJumpCd = now; camCamFlash = 0.35;
     }
   } else {
     camDir = 0;
     camTipS = null;
   }
+  camCamFlash = Math.max(0, camCamFlash - 0.016);
   // 预览：镜像视频 → 骨骼 → 跳跃线 → 提示/光点
   pctx.save();
   pctx.clearRect(0, 0, pv.width, pv.height);
@@ -887,10 +917,16 @@ function camProcess(){
     pctx.restore();
   }
   if (camTip && now - camTipSeen < 800) {
-    pctx.fillStyle = '#ff3b30';
+    const dotC = camDir < -0.3 ? '#6fc3ff' : (camDir > 0.3 ? '#7ae582' : (camCamFlash > 0 ? '#ffffff' : '#ff3b30'));
+    pctx.fillStyle = dotC;
     pctx.beginPath(); pctx.arc(camTip.x * pv.width, camTip.y * pv.height, 7, 0, Math.PI * 2); pctx.fill();
     pctx.strokeStyle = '#ffffff'; pctx.lineWidth = 2;
     pctx.beginPath(); pctx.arc(camTip.x * pv.width, camTip.y * pv.height, 7, 0, Math.PI * 2); pctx.stroke();
+  }
+  if (camCamFlash > 0) {
+    pctx.strokeStyle = 'rgba(255,255,255,' + Math.min(1, camCamFlash * 3).toFixed(3) + ')';
+    pctx.lineWidth = 3;
+    pctx.strokeRect(1.5, 1.5, pv.width - 3, pv.height - 3);
   }
 }
 
