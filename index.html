@@ -422,8 +422,8 @@ function paletteLerp(a, b, t){
 }
 function updateBiome(){
   const m = Math.max(0, (bear.x - STARTX) / 48);
-  const idx = Math.floor(m / 500) % 4;
-  const prog = (m % 500) / 500;
+  const idx = Math.floor(m / 300) % 4;
+  const prog = (m % 300) / 300;
   const t = clamp((prog - 0.76) / 0.24, 0, 1);
   if (idx !== bioIdx) {
     bioIdx = idx;
@@ -516,7 +516,7 @@ let boss = null, stingers = [], bossTimer = 90, bossDefeats = 0;
 let event = null, eventTimer = 40, meteors = [];
 const clouds = [];
 for (let i = 0; i < 5; i++) {
-  clouds.push({ x: Math.random() * 1600, y: 60 + Math.random() * 130, s: 0.7 + Math.random() * 0.8, v: 8 + Math.random() * 10 });
+  clouds.push({ x: Math.random() * 1600, y: 60 + Math.random() * 130, s: 0.7 + Math.random() * 0.8, v: 14 + Math.random() * 14 });
 }
 
 function resetGame(){
@@ -1608,7 +1608,7 @@ function updateCamera(dt){
 
 /* ================= 绘制 ================= */
 function drawSky(){
-  const shift = Math.min(1, playTime / 240) * 0.85;
+  const shift = Math.min(1, playTime / 110) * 0.85;
   const g = ctx.createLinearGradient(0, camY, 0, camY + viewH);
   g.addColorStop(0, hexLerp(skyPal[0], '#ff9e6d', shift));
   g.addColorStop(0.55, hexLerp(skyPal[1], '#ffc98a', shift));
@@ -2154,8 +2154,8 @@ function drawWarnings(){
 }
 function drawWorld(){
   drawSky();
-  drawHillLayer(0.30, '#b7d9a3', 120, 0.0011, camY + viewH * 0.56);
-  drawHillLayer(0.55, '#93c47d', 80, 0.0018, camY + viewH * 0.66);
+  drawHillLayer(0.45, '#b7d9a3', 120, 0.0011, camY + viewH * 0.56);
+  drawHillLayer(0.70, '#93c47d', 80, 0.0018, camY + viewH * 0.66);
   drawSun();
   drawClouds();
   drawGround();
