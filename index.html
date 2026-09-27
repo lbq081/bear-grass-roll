@@ -672,6 +672,7 @@ let camHands = null, camLoading = false;
 let camBuf = null, camBufCtx = null, camPrevGray = null;
 let camLastLm = null, camFistPrev = false, camGuideTimer = null;
 let camTipS = null, camTipPrevT = 0, camTipPrevY = 0, camTipPrevX = 0, camJumpCd = 0, camCamFlash = 0;
+let camNextAt = 0, camLastCost = 0, camLastDraw = 0;
 let camCenterX = 0.5, camCalibN = 0, camCalibDone = false, camCalibSum = 0, camPalm = 0.12;
 
 function stopCam(){
@@ -743,13 +744,14 @@ function toggleCam(){
   }).then(function(){
     camOn = true; camCrossArmed = false; camPrevGray = null; camTip = null; camLastLm = null; camFistPrev = false;
     camTipS = null; camTipPrevT = 0; camTipPrevY = 0; camTipPrevX = 0; camJumpCd = 0; camCamFlash = 0;
+    camNextAt = 0; camLastCost = 0; camLastDraw = 0;
     camCenterX = 0.5; camCalibN = 0; camCalibDone = false; camCalibSum = 0; camPalm = 0.12;
     document.getElementById('camBox').classList.remove('hidden');
     document.getElementById('btnCam').textContent = '📷✓';
     addToast('📷 手指体感开启：手指左右转向 · 上挑/握拳跳跃');
     loadHands();
     showCamGuide();
-    camTimer = setInterval(camProcess, 33);
+    camTimer = setInterval(camProcess, 66);
   }).catch(function(e){
     addToast('📷 摄像头不可用（微信内请用系统浏览器打开）');
   });
@@ -807,9 +809,13 @@ function camProcess(){
   const pctx = pv.getContext('2d');
   const now = performance.now();
   let tip = null, fistNow = false;
-  if (camHands && camHands !== 'fallback') {
+  // 自适应节流：只在游玩时识别；按识别耗时动态调整频率（弱机自动降到 4~10fps，主线程不再被阻塞）
+  const doDetect = (state.mode === 'playing') && now >= camNextAt;
+  if (doDetect && camHands && camHands !== 'fallback') {
+    const t0 = performance.now();
     try {
       const res = camHands.detectForVideo(camVideo, now);
+      camLastCost = performance.now() - t0;
       if (res.landmarks && res.landmarks.length) {
         const lm = res.landmarks[0];
         camLastLm = lm;
@@ -826,9 +832,11 @@ function camProcess(){
       } else {
         camLastLm = null;
       }
-    } catch(e){}
-  } else if (camHands === 'fallback') {
+    } catch(e){ camLastCost = 30; }
+    camNextAt = now + Math.max(66, Math.min(260, camLastCost * 2.5));
+  } else if (doDetect && camHands === 'fallback') {
     tip = frameDiffTip();
+    camNextAt = now + 66;
   }
   if (tip) {
     camTip = tip; camTipSeen = now;
