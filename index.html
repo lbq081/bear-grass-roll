@@ -50,6 +50,11 @@
     box-shadow:0 6px 16px rgba(0,0,0,0.3); background:#222; }
   #camBox.hidden { display:none; }
   #camPreview { display:block; width:160px; height:120px; }
+  .camhand { font-size:72px; line-height:1.1; display:inline-block;
+    animation:handmove 1.6s ease-in-out infinite; }
+  @keyframes handmove { 0%,100%{ transform:translateX(-18px) rotate(-8deg); } 50%{ transform:translateX(18px) rotate(8deg); } }
+  #camGuide { z-index:12; }
+  #camGuide .steps { text-align:left; display:inline-block; color:#6b4b2a; font-size:16px; line-height:2.1; margin-bottom:16px; }
   .steerbtn { width:76px; height:76px; border-radius:50%; border:3px solid #7fc95a;
     background:rgba(255,255,255,0.9); color:#4a7a2d; font-size:30px; font-weight:900;
     box-shadow:0 6px 16px rgba(0,0,0,0.28); cursor:pointer; touch-action:none;
@@ -121,7 +126,7 @@
       <span class="bear">🐻</span>
       <h1>草地打滚的小熊</h1>
       <p class="sub">在软软的草地上滚来滚去～<br>收集 🍯 和 🍓 补充体力，<br>躲开大石头、滚石和捣蛋的小蜜蜂！</p>
-      <p class="hint">🕹️ 左下角 <b>◀ ▶</b> 按钮控制方向<br>🔘 右下角「跳!」跳跃（空中再点 = 二段跳）<br>📷 点右上角相机 = 摄像头手指体感<br>　（手指左右移动转向 · 向上一挑跳跃）<br>⚠️ 红色 <b>!</b> / 白色弧线 = 起跳时机<br>🖥 电脑：← → 方向，空格跳跃</p>
+      <p class="hint">🕹️ 左下角 <b>◀ ▶</b> 按钮控制方向<br>🔘 右下角「跳!」跳跃（空中再点 = 二段跳）<br>📷 点右上角相机 = 摄像头手指体感<br>　（有新手引导 · 手指左右转向 · 上挑/握拳跳）<br>⚠️ 红色 <b>!</b> / 白色弧线 = 起跳时机<br>🖥 电脑：← → 方向，空格跳跃</p>
       <button id="btnStart" class="btn">开始打滚 🐾</button>
       <div id="menuBest"></div>
       <div id="menuAch" class="ver"></div>
@@ -135,6 +140,19 @@
       <h1>休息一下</h1>
       <p class="sub">小熊在草地里打了个盹～</p>
       <button id="btnResume" class="btn">继续滚 🔄</button>
+    </div>
+  </div>
+
+  <div id="camGuide" class="overlay hidden">
+    <div class="card">
+      <span class="camhand">✋</span>
+      <h1>手指体感玩法</h1>
+      <div class="steps">
+        1️⃣ 把手伸到镜头前 ✋<br>
+        2️⃣ 手指<b>左右移动</b> = 转向<br>
+        3️⃣ 手指<b>向上挑</b> 或 <b>握拳</b> = 跳跃
+      </div>
+      <button id="btnCamGo" class="btn">我懂啦，开始!</button>
     </div>
   </div>
 
@@ -484,6 +502,7 @@ let camOn = false, camStream = null, camTimer = null;
 let camDir = 0, camTip = null, camTipSeen = 0, camCrossArmed = false;
 let camHands = null, camLoading = false;
 let camBuf = null, camBufCtx = null, camPrevGray = null;
+let camLastLm = null, camFistPrev = false, camGuideTimer = null;
 
 function stopCam(){
   camOn = false; camDir = 0; camTip = null; camCrossArmed = false;
@@ -495,6 +514,16 @@ function stopCam(){
   try { camVideo.srcObject = null; } catch(e){}
   document.getElementById('camBox').classList.add('hidden');
   document.getElementById('btnCam').textContent = '📷';
+  hideCamGuide();
+}
+function hideCamGuide(){
+  if (camGuideTimer) { clearTimeout(camGuideTimer); camGuideTimer = null; }
+  document.getElementById('camGuide').classList.add('hidden');
+}
+function showCamGuide(){
+  hideCamGuide();
+  document.getElementById('camGuide').classList.remove('hidden');
+  camGuideTimer = setTimeout(hideCamGuide, 12000);
 }
 async function loadHands(){
   if (camHands || camLoading) return;
@@ -536,11 +565,12 @@ function toggleCam(){
     camVideo.srcObject = stream;
     return camVideo.play();
   }).then(function(){
-    camOn = true; camCrossArmed = false; camPrevGray = null; camTip = null;
+    camOn = true; camCrossArmed = false; camPrevGray = null; camTip = null; camLastLm = null; camFistPrev = false;
     document.getElementById('camBox').classList.remove('hidden');
     document.getElementById('btnCam').textContent = '📷✓';
-    addToast('📷 正在加载手指识别模型…');
+    addToast('📷 手指体感开启：手指左右转向 · 上挑/握拳跳跃');
     loadHands();
+    showCamGuide();
     camTimer = setInterval(camProcess, 50);
   }).catch(function(e){
     addToast('📷 摄像头不可用（微信内请用系统浏览器打开）');
@@ -598,43 +628,75 @@ function camProcess(){
   const pv = document.getElementById('camPreview');
   const pctx = pv.getContext('2d');
   const now = performance.now();
-  let tip = null;
+  let tip = null, fistNow = false;
   if (camHands && camHands !== 'fallback') {
     try {
       const res = camHands.detectForVideo(camVideo, now);
       if (res.landmarks && res.landmarks.length) {
-        tip = { x: 1 - res.landmarks[0][8].x, y: res.landmarks[0][8].y };
-        camDrawHand(pctx, res.landmarks[0]);
+        const lm = res.landmarks[0];
+        camLastLm = lm;
+        tip = { x: 1 - lm[8].x, y: lm[8].y };
+        // 握拳检测：四个指尖靠近手腕即视为握拳
+        const palm = Math.hypot(lm[5].x - lm[17].x, lm[5].y - lm[17].y) || 1;
+        let sum = 0;
+        for (let k = 0; k < 4; k++) {
+          const fi = [8, 12, 16, 20][k];
+          sum += Math.hypot(lm[fi].x - lm[0].x, lm[fi].y - lm[0].y);
+        }
+        fistNow = (sum / 4) / palm < 0.60;
+      } else {
+        camLastLm = null;
       }
     } catch(e){}
   } else if (camHands === 'fallback') {
     tip = frameDiffTip();
   }
   if (tip) { camTip = tip; camTipSeen = now; }
-  // 控制映射：指尖 x = 转向；从下越过 30% 线 = 跳跃
+  const fistEdge = fistNow && !camFistPrev;
+  camFistPrev = fistNow;
+  // 控制映射：指尖 x = 转向；上挑越线 / 握拳 = 跳跃
   if (camTip && now - camTipSeen < 400) {
     camDir = camTip.x < 0.36 ? -1 : (camTip.x > 0.64 ? 1 : 0);
     if (!camCrossArmed && camTip.y > 0.60) camCrossArmed = true;
     if (camCrossArmed && camTip.y < 0.30 && state.mode === 'playing') {
       tryJump();
+      hideCamGuide();
       camCrossArmed = false;
+    }
+    if (fistEdge && state.mode === 'playing') {
+      tryJump();
+      hideCamGuide();
     }
   } else {
     camDir = 0;
   }
-  // 预览：镜像视频 + 跳跃线 + 指尖光点
+  // 预览：镜像视频 → 骨骼 → 跳跃线 → 提示/光点
   pctx.save();
   pctx.clearRect(0, 0, pv.width, pv.height);
   pctx.translate(pv.width, 0); pctx.scale(-1, 1);
   pctx.drawImage(camVideo, 0, 0, pv.width, pv.height);
   pctx.restore();
+  if (camLastLm && camHands !== 'fallback') camDrawHand(pctx, camLastLm);
   pctx.strokeStyle = 'rgba(255,255,255,0.85)';
   pctx.setLineDash([4, 4]);
   pctx.beginPath(); pctx.moveTo(0, pv.height * 0.30); pctx.lineTo(pv.width, pv.height * 0.30); pctx.stroke();
   pctx.setLineDash([]);
   pctx.fillStyle = 'rgba(255,255,255,0.7)';
   pctx.font = '9px sans-serif';
-  pctx.fillText('↑ 上挑跳跃', 3, pv.height * 0.30 - 4);
+  pctx.fillText('↑ 上挑/握拳跳跃', 3, pv.height * 0.30 - 4);
+  if (camOn && (!camTip || now - camTipSeen > 1500)) {
+    // 识别不到手：大提示
+    const pulse = 0.55 + 0.45 * Math.sin(state.t * 4);
+    pctx.save();
+    pctx.globalAlpha = pulse;
+    pctx.fillStyle = 'rgba(0,0,0,0.6)';
+    pctx.fillRect(0, 0, pv.width, pv.height);
+    pctx.fillStyle = '#ffffff';
+    pctx.font = '700 12px sans-serif';
+    pctx.textAlign = 'center';
+    pctx.fillText('✋ 把手伸到镜头前', pv.width / 2, pv.height / 2);
+    pctx.restore();
+  }
   if (camTip && now - camTipSeen < 400) {
     pctx.fillStyle = '#ff3b30';
     pctx.beginPath(); pctx.arc(camTip.x * pv.width, camTip.y * pv.height, 7, 0, Math.PI * 2); pctx.fill();
@@ -1821,6 +1883,7 @@ document.getElementById('btnCam').addEventListener('click', function(){
   ensureAudio();
   toggleCam();
 });
+document.getElementById('btnCamGo').addEventListener('click', hideCamGuide);
 document.getElementById('btnCopy').addEventListener('click', function(){
   const t = '我在《草地打滚的小熊》滚了 ' + lastResult.dist + ' 米，总分 ' + lastResult.total + ' 分！🍯×' + honey + ' 快来挑战我～ 🐻';
   const btn = this;
