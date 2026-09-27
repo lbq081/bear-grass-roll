@@ -177,6 +177,7 @@
         <button id="skinNext" class="skinarrow">▶</button>
       </div>
       <div class="ver" id="skinBank"></div>
+      <button id="btnRecharge" class="btn small">💰 充值（老板专用）</button>
       <button id="btnShopClose" class="btn small">返回</button>
     </div>
   </div>
@@ -188,6 +189,7 @@
       <div id="finalStats"></div>
       <button id="btnRestart" class="btn">再滚一次 🔄</button>
       <button id="btnCopy" class="btn small">📋 复制成绩，去炫耀!</button>
+      <button id="btnMenu" class="btn small">🏠 回主菜单换装扮</button>
       <div class="tip">TIP：空中再点一次可以二段跳哦～ 🌈</div>
     </div>
   </div>
@@ -386,10 +388,12 @@ const SKINS = [
 ];
 let skinState = { owned:['classic'], equipped:'classic' };
 let honeyBank = 0;
+let giftClaimed = false, justGifted = false;
 try {
   const sk = JSON.parse(localStorage.getItem('bearSkins') || 'null');
   if (sk) skinState = Object.assign(skinState, sk);
   honeyBank = parseInt(localStorage.getItem('bearHoneyBank') || '0', 10) || 0;
+  giftClaimed = localStorage.getItem('bearGift') === '1';
 } catch(e){}
 function saveSkins(){
   try {
@@ -2417,6 +2421,11 @@ document.getElementById('btnStart').addEventListener('click', startGame);
 document.getElementById('btnRestart').addEventListener('click', startGame);
 document.getElementById('btnResume').addEventListener('click', doResume);
 document.getElementById('btnPause').addEventListener('click', doPause);
+document.getElementById('btnMenu').addEventListener('click', function(){
+  ensureAudio();
+  stopMusic();
+  initMenu();
+});
 let lastJumpAt = 0;
 document.getElementById('btnJump').addEventListener('pointerdown', function(e){
   e.preventDefault();
@@ -2470,6 +2479,14 @@ document.getElementById('btnShop').addEventListener('click', function(){
 });
 document.getElementById('btnShopClose').addEventListener('click', function(){
   document.getElementById('shop').classList.add('hidden');
+});
+document.getElementById('btnRecharge').addEventListener('click', function(){
+  honeyBank += 999;
+  saveSkins();
+  refreshShop();
+  sfx('ach');
+  flashT = 0.3;
+  addToast('💎 尊贵的金主大人！充值成功 +999🍯（本游戏永久免费，这是逗你玩的😄）');
 });
 document.getElementById('skinPrev').addEventListener('click', function(){
   shopIdx = (shopIdx + SKINS.length - 1) % SKINS.length;
@@ -2527,12 +2544,24 @@ function initMenu(){
   resetGame();
   eyeMode = 'idle';
   setMode('menu');
+  document.getElementById('menu').classList.remove('hidden');
+  document.getElementById('over').classList.add('hidden');
+  document.getElementById('pause').classList.add('hidden');
+  document.getElementById('shop').classList.add('hidden');
+  // 新手礼包：首次进入赠送 100 蜂蜜
+  if (!giftClaimed) {
+    giftClaimed = true;
+    honeyBank += 100;
+    justGifted = true;
+    saveSkins();
+    try { localStorage.setItem('bearGift', '1'); } catch(e){}
+  }
   const mBest = document.getElementById('menuBest');
   mBest.textContent = state.best > 0 ? '🏆 最高纪录：' + state.best : '来创造你的第一份纪录吧～';
   const mAch = document.getElementById('menuAch');
   mAch.textContent = '🏅 成就 ' + stats.ach.length + '/' + ACH.length + '（' + ACH.filter(function(a){ return stats.ach.indexOf(a.id) < 0; }).length + ' 个待解锁）';
   const mHoney = document.getElementById('menuHoney');
-  mHoney.textContent = '🍯 蜂蜜银行：' + honeyBank;
+  mHoney.textContent = '🍯 蜂蜜银行：' + honeyBank + (justGifted ? '（🎁 新手礼包 +100 已到账！）' : '');
   document.getElementById('btnMute').textContent = muted ? '🔇' : '🔊';
 }
 resize();
