@@ -503,6 +503,7 @@ let camDir = 0, camTip = null, camTipSeen = 0, camCrossArmed = false;
 let camHands = null, camLoading = false;
 let camBuf = null, camBufCtx = null, camPrevGray = null;
 let camLastLm = null, camFistPrev = false, camGuideTimer = null;
+let camTipS = null, camTipPrevT = 0, camTipPrevY = 0, camJumpCd = 0;
 
 function stopCam(){
   camOn = false; camDir = 0; camTip = null; camCrossArmed = false;
@@ -535,13 +536,19 @@ async function loadHands(){
       camHands = await vision.HandLandmarker.createFromOptions(fileset, {
         baseOptions: { modelAssetPath: 'models/hand_landmarker.task', delegate: 'GPU' },
         runningMode: 'VIDEO',
-        numHands: 1
+        numHands: 1,
+        minHandDetectionConfidence: 0.4,
+        minHandPresenceConfidence: 0.4,
+        minTrackingConfidence: 0.4
       });
     } catch(eGpu) {
       camHands = await vision.HandLandmarker.createFromOptions(fileset, {
         baseOptions: { modelAssetPath: 'models/hand_landmarker.task', delegate: 'CPU' },
         runningMode: 'VIDEO',
-        numHands: 1
+        numHands: 1,
+        minHandDetectionConfidence: 0.4,
+        minHandPresenceConfidence: 0.4,
+        minTrackingConfidence: 0.4
       });
     }
     addToast('📷 手指识别就绪：指尖左右移动转向 · 上挑跳跃');
@@ -558,7 +565,7 @@ function toggleCam(){
     return;
   }
   navigator.mediaDevices.getUserMedia({
-    video: { facingMode: 'user', width: { ideal: 480 }, height: { ideal: 360 } },
+    video: { facingMode: 'user', width: { ideal: 320 }, height: { ideal: 240 } },
     audio: false
   }).then(function(stream){
     camStream = stream;
@@ -566,12 +573,13 @@ function toggleCam(){
     return camVideo.play();
   }).then(function(){
     camOn = true; camCrossArmed = false; camPrevGray = null; camTip = null; camLastLm = null; camFistPrev = false;
+    camTipS = null; camTipPrevT = 0; camTipPrevY = 0; camJumpCd = 0;
     document.getElementById('camBox').classList.remove('hidden');
     document.getElementById('btnCam').textContent = '📷✓';
     addToast('📷 手指体感开启：手指左右转向 · 上挑/握拳跳跃');
     loadHands();
     showCamGuide();
-    camTimer = setInterval(camProcess, 50);
+    camTimer = setInterval(camProcess, 33);
   }).catch(function(e){
     addToast('📷 摄像头不可用（微信内请用系统浏览器打开）');
   });
@@ -651,24 +659,45 @@ function camProcess(){
   } else if (camHands === 'fallback') {
     tip = frameDiffTip();
   }
-  if (tip) { camTip = tip; camTipSeen = now; }
+  if (tip) {
+    camTip = tip; camTipSeen = now;
+    if (!camTipS) camTipS = { x: tip.x, y: tip.y };
+    else {
+      camTipS.x = camTipS.x * 0.45 + tip.x * 0.55;   // 平滑，消除抖动
+      camTipS.y = camTipS.y * 0.45 + tip.y * 0.55;
+    }
+  } else {
+    camTipPrevT = 0;
+  }
   const fistEdge = fistNow && !camFistPrev;
   camFistPrev = fistNow;
-  // 控制映射：指尖 x = 转向；上挑越线 / 握拳 = 跳跃
-  if (camTip && now - camTipSeen < 400) {
-    camDir = camTip.x < 0.36 ? -1 : (camTip.x > 0.64 ? 1 : 0);
-    if (!camCrossArmed && camTip.y > 0.60) camCrossArmed = true;
-    if (camCrossArmed && camTip.y < 0.30 && state.mode === 'playing') {
-      tryJump();
-      hideCamGuide();
-      camCrossArmed = false;
+  // 控制映射（高灵敏度）：指尖 x 几乎无死区转向；快速上挑 / 越线 / 握拳 = 跳跃
+  if (camTip && now - camTipSeen < 800) {
+    const nx = camTipS.x, ny = camTipS.y;
+    if (nx < 0.46) camDir = -1;
+    else if (nx > 0.54) camDir = 1;
+    // 中间窄带保持原方向（滞回防抖）
+    // 速度法：150ms 内上移超过 16% 即触发跳跃
+    const dtTip = (now - camTipPrevT) / 1000;
+    if (camTipPrevT && dtTip > 0 && dtTip < 0.30) {
+      const rise = camTipPrevY - tip.y;   // 用原始值检测，更灵敏
+      if (rise > 0.16 && state.mode === 'playing' && now - camJumpCd > 420) {
+        tryJump(); hideCamGuide(); camJumpCd = now;
+      }
     }
-    if (fistEdge && state.mode === 'playing') {
-      tryJump();
-      hideCamGuide();
+    camTipPrevY = tip.y; camTipPrevT = now;
+    // 越线法（备份触发）
+    if (!camCrossArmed && ny > 0.62) camCrossArmed = true;
+    if (camCrossArmed && ny < 0.30 && state.mode === 'playing' && now - camJumpCd > 420) {
+      tryJump(); hideCamGuide(); camJumpCd = now; camCrossArmed = false;
+    }
+    // 握拳法
+    if (fistEdge && state.mode === 'playing' && now - camJumpCd > 420) {
+      tryJump(); hideCamGuide(); camJumpCd = now;
     }
   } else {
     camDir = 0;
+    camTipS = null;
   }
   // 预览：镜像视频 → 骨骼 → 跳跃线 → 提示/光点
   pctx.save();
@@ -697,7 +726,7 @@ function camProcess(){
     pctx.fillText('✋ 把手伸到镜头前', pv.width / 2, pv.height / 2);
     pctx.restore();
   }
-  if (camTip && now - camTipSeen < 400) {
+  if (camTip && now - camTipSeen < 800) {
     pctx.fillStyle = '#ff3b30';
     pctx.beginPath(); pctx.arc(camTip.x * pv.width, camTip.y * pv.height, 7, 0, Math.PI * 2); pctx.fill();
     pctx.strokeStyle = '#ffffff'; pctx.lineWidth = 2;
