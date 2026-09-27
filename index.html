@@ -148,8 +148,8 @@
       <span class="camhand">✋</span>
       <h1>手指体感玩法</h1>
       <div class="steps">
-        1️⃣ 把手伸到镜头前 ✋<br>
-        2️⃣ 手指<b>左右移动</b> = 转向<br>
+        1️⃣ 把手伸到镜头前 ✋（自动校准中线）<br>
+        2️⃣ 手指<b>左右移动</b> = 转向（越远越快）<br>
         3️⃣ 手指<b>向上挑</b> 或 <b>握拳</b> = 跳跃
       </div>
       <button id="btnCamGo" class="btn">我懂啦，开始!</button>
@@ -492,8 +492,8 @@ function getInputDir(){
   if (btnDirs.right) d += 1;
   if (keys.has('ArrowLeft') || keys.has('KeyA')) d -= 1;
   if (keys.has('ArrowRight') || keys.has('KeyD')) d += 1;
-  if (camOn) d += camDir;   // 摄像头手指体感
-  return d === 0 ? 0 : (d > 0 ? 1 : -1);
+  if (camOn) d += camDir;   // 摄像头手指体感（模拟量）
+  return clamp(d, -1, 1);
 }
 
 /* ================= 摄像头手指体感（MediaPipe 手部骨骼识别） ================= */
@@ -504,6 +504,7 @@ let camHands = null, camLoading = false;
 let camBuf = null, camBufCtx = null, camPrevGray = null;
 let camLastLm = null, camFistPrev = false, camGuideTimer = null;
 let camTipS = null, camTipPrevT = 0, camTipPrevY = 0, camJumpCd = 0;
+let camCenterX = 0.5, camCalibN = 0, camCalibDone = false, camCalibSum = 0, camPalm = 0.12;
 
 function stopCam(){
   camOn = false; camDir = 0; camTip = null; camCrossArmed = false;
@@ -574,6 +575,7 @@ function toggleCam(){
   }).then(function(){
     camOn = true; camCrossArmed = false; camPrevGray = null; camTip = null; camLastLm = null; camFistPrev = false;
     camTipS = null; camTipPrevT = 0; camTipPrevY = 0; camJumpCd = 0;
+    camCenterX = 0.5; camCalibN = 0; camCalibDone = false; camCalibSum = 0; camPalm = 0.12;
     document.getElementById('camBox').classList.remove('hidden');
     document.getElementById('btnCam').textContent = '📷✓';
     addToast('📷 手指体感开启：手指左右转向 · 上挑/握拳跳跃');
@@ -646,6 +648,7 @@ function camProcess(){
         tip = { x: 1 - lm[8].x, y: lm[8].y };
         // 握拳检测：四个指尖靠近手腕即视为握拳
         const palm = Math.hypot(lm[5].x - lm[17].x, lm[5].y - lm[17].y) || 1;
+        camPalm = palm;
         let sum = 0;
         for (let k = 0; k < 4; k++) {
           const fi = [8, 12, 16, 20][k];
@@ -671,17 +674,32 @@ function camProcess(){
   }
   const fistEdge = fistNow && !camFistPrev;
   camFistPrev = fistNow;
-  // 控制映射（高灵敏度）：指尖 x 几乎无死区转向；快速上挑 / 越线 / 握拳 = 跳跃
+  // 控制映射（自动校准 + 模拟量转向 + 速度法跳跃）
   if (camTip && now - camTipSeen < 800) {
+    // 校准：前 1 秒记录手的自然位置作为中线
+    if (!camCalibDone) {
+      camCalibSum += camTip.x; camCalibN++;
+      if (camCalibN >= 30) {
+        camCenterX = clamp(camCalibSum / camCalibN, 0.25, 0.75);
+        camCalibDone = true;
+        addToast('📷 校准完成：手指在中线不动 = 停');
+      }
+    }
+    // 模拟量转向：离中线越远滚得越快
+    if (camCalibDone) {
+      const target = clamp((camTipS.x - camCenterX) / 0.20, -1, 1);
+      camDir += (target - camDir) * 0.35;
+      if (Math.abs(camDir) < 0.06) camDir = 0;
+    } else {
+      camDir = 0;
+    }
     const nx = camTipS.x, ny = camTipS.y;
-    if (nx < 0.46) camDir = -1;
-    else if (nx > 0.54) camDir = 1;
-    // 中间窄带保持原方向（滞回防抖）
-    // 速度法：150ms 内上移超过 16% 即触发跳跃
+    // 速度法：150ms 内上移超过手掌比例阈值即触发跳跃（自适应大手小手）
+    const flickTh = clamp(camPalm * 0.55, 0.08, 0.25);
     const dtTip = (now - camTipPrevT) / 1000;
     if (camTipPrevT && dtTip > 0 && dtTip < 0.30) {
       const rise = camTipPrevY - tip.y;   // 用原始值检测，更灵敏
-      if (rise > 0.16 && state.mode === 'playing' && now - camJumpCd > 420) {
+      if (rise > flickTh && state.mode === 'playing' && now - camJumpCd > 420) {
         tryJump(); hideCamGuide(); camJumpCd = now;
       }
     }
@@ -712,7 +730,29 @@ function camProcess(){
   pctx.setLineDash([]);
   pctx.fillStyle = 'rgba(255,255,255,0.7)';
   pctx.font = '9px sans-serif';
+  pctx.textAlign = 'left';
   pctx.fillText('↑ 上挑/握拳跳跃', 3, pv.height * 0.30 - 4);
+  // 转向中线（校准后显示）
+  pctx.save();
+  if (camCalibDone) {
+    pctx.strokeStyle = 'rgba(120,220,255,0.75)';
+    pctx.setLineDash([3, 3]);
+    pctx.beginPath();
+    pctx.moveTo(camCenterX * pv.width, 0);
+    pctx.lineTo(camCenterX * pv.width, pv.height);
+    pctx.stroke();
+    pctx.setLineDash([]);
+    pctx.fillStyle = 'rgba(120,220,255,0.9)';
+    pctx.font = '9px sans-serif';
+    pctx.textAlign = 'left';
+    pctx.fillText('中线=停', Math.min(camCenterX * pv.width + 3, pv.width - 40), 10);
+  } else {
+    pctx.fillStyle = 'rgba(255,255,255,0.75)';
+    pctx.font = '700 10px sans-serif';
+    pctx.textAlign = 'center';
+    pctx.fillText('🔄 校准中：把手放中间', pv.width / 2, pv.height - 8);
+  }
+  pctx.restore();
   if (camOn && (!camTip || now - camTipSeen > 1500)) {
     // 识别不到手：大提示
     const pulse = 0.55 + 0.45 * Math.sin(state.t * 4);
