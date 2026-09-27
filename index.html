@@ -45,13 +45,15 @@
   #steer { position:absolute; left:16px; bottom:calc(36px + env(safe-area-inset-bottom)); z-index:6;
     display:flex; gap:14px; }
   #steer.hidden { display:none; }
-  #camBox { position:absolute; right:12px; top:calc(64px + env(safe-area-inset-top)); z-index:6;
+  #camBox { position:absolute; right:12px; top:calc(126px + env(safe-area-inset-top)); z-index:6;
     border-radius:14px; overflow:hidden; border:2px solid rgba(255,255,255,0.9);
     box-shadow:0 6px 16px rgba(0,0,0,0.3); background:#222; }
   #camBox.hidden { display:none; }
   #camPreview { display:block; width:min(44vw,240px); height:auto; }
-  #btnCam { width:52px; height:52px; font-size:26px; border:2px solid #ff9d2e;
+  #btnCam { position:absolute; right:12px; top:calc(64px + env(safe-area-inset-top)); z-index:6;
+    width:52px; height:52px; font-size:26px; border:2px solid #ff9d2e;
     background:rgba(255,255,255,0.95); }
+  #btnCam.hidden { display:none; }
   .camhand { font-size:72px; line-height:1.1; display:inline-block;
     animation:handmove 1.6s ease-in-out infinite; }
   .shopbear { font-size:80px; line-height:1.2; }
@@ -114,7 +116,6 @@
         <div class="pill"><span id="honeyc">🍯×0</span></div>
         <button id="btnMute" class="hudbtn">🔊</button>
         <button id="btnPause" class="hudbtn">⏸</button>
-        <button id="btnCam" class="hudbtn">📷</button>
       </div>
     </div>
   </div>
@@ -123,6 +124,7 @@
     <canvas id="camPreview" width="320" height="240"></canvas>
   </div>
   <video id="camVideo" autoplay playsinline muted style="display:none"></video>
+  <button id="btnCam" class="hudbtn hidden">📷</button>
 
   <div id="steer" class="hidden">
     <button id="btnLeft" class="steerbtn">◀</button>
@@ -2463,6 +2465,7 @@ function setMode(mode){
   document.getElementById('hud').classList.toggle('hidden', mode !== 'playing');
   document.getElementById('btnJump').classList.toggle('hidden', mode !== 'playing');
   document.getElementById('steer').classList.toggle('hidden', mode !== 'playing');
+  document.getElementById('btnCam').classList.toggle('hidden', mode !== 'playing');
 }
 function startGame(){
   ensureAudio();
