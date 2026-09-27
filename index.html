@@ -422,8 +422,8 @@ function paletteLerp(a, b, t){
 }
 function updateBiome(){
   const m = Math.max(0, (bear.x - STARTX) / 48);
-  const idx = Math.floor(m / 300) % 4;
-  const prog = (m % 300) / 300;
+  const idx = Math.floor(m / 200) % 4;
+  const prog = (m % 200) / 200;
   const t = clamp((prog - 0.76) / 0.24, 0, 1);
   if (idx !== bioIdx) {
     bioIdx = idx;
@@ -460,6 +460,7 @@ function spawnAmbient(){
 const R = 30;            // 小熊半径
 const MAXS = 560;        // 最大速度
 const ACC = 560;         // 加速度
+const MAXE = 120;        // 最大体力（血量）
 const STARTX = 60;       // 起点（米 = (x-STARTX)/48）
 
 const state = {
@@ -516,12 +517,12 @@ let boss = null, stingers = [], bossTimer = 90, bossDefeats = 0;
 let event = null, eventTimer = 40, meteors = [];
 const clouds = [];
 for (let i = 0; i < 5; i++) {
-  clouds.push({ x: Math.random() * 1600, y: 60 + Math.random() * 130, s: 0.7 + Math.random() * 0.8, v: 14 + Math.random() * 14 });
+  clouds.push({ x: Math.random() * 1600, y: 60 + Math.random() * 130, s: 0.7 + Math.random() * 0.8, v: 18 + Math.random() * 16 });
 }
 
 function resetGame(){
   bear = { x: STARTX, y: 0, vx: 0, vy: 0, airborne: false, falling: false, overGapT: 0, squash: 0, stretch: 0,
-    jumps: 0, starT: 0, magnetT: 0, shieldT: 0, angle: 0, energy: 100, groundY: terrainY(STARTX) };
+    jumps: 0, starT: 0, magnetT: 0, shieldT: 0, angle: 0, energy: MAXE, groundY: terrainY(STARTX) };
   honey = 0;
   picked = new Set();
   playTime = 0;
@@ -1184,7 +1185,7 @@ function updatePlay(dt){
 
   // 体力消耗（四叶草护盾期间不掉体力）
   if (bear.shieldT <= 0) {
-    bear.energy -= (2.3 + (Math.abs(bear.vx) > 40 ? 0.5 : 0) + (inPuddle ? 1.5 : 0)) * diff * dt;
+    bear.energy -= (2.1 + (Math.abs(bear.vx) > 40 ? 0.4 : 0) + (inPuddle ? 1.5 : 0)) * diff * dt;
   }
   if (bear.energy <= 0) { bear.energy = 0; gameOver('energy'); return; }
 
@@ -1218,7 +1219,7 @@ function updatePlay(dt){
       const nx = d > 0.01 ? dx / d : -1;
       bear.x = rk.x + nx * (R + rk.r * 0.9);
       bear.vx = -bear.vx * 0.45 + nx * 60;
-      bear.energy = Math.max(0, bear.energy - 7);
+      bear.energy = Math.max(0, bear.energy - 5);
       comboBreak();
       shake = 9;
       sfx('bump'); vibrate(40);
@@ -1250,7 +1251,7 @@ function updatePlay(dt){
       boulders.splice(i, 1);
       const nx = d > 0.01 ? dx / d : -1;
       bear.vx = -bear.vx * 0.5 + nx * 80;
-      bear.energy = Math.max(0, bear.energy - 12);
+      bear.energy = Math.max(0, bear.energy - 9);
       comboBreak();
       shake = 10;
       sfx('bump'); vibrate(60);
@@ -1269,7 +1270,7 @@ function updatePlay(dt){
     if (Math.abs(dx) < R + 20 && Math.abs(dy) < R + 24) {
       it.taken = true;
       if (it.type === 'honey') {
-        bear.energy = Math.min(100, bear.energy + 30);
+        bear.energy = Math.min(MAXE, bear.energy + 30);
         honey++;
         honeyBank++;
         stats.totalHoney++;
@@ -1279,7 +1280,7 @@ function updatePlay(dt){
         addSparkle(it.x, iy, 10);
         addFloat(it.x, iy - 28, '+' + (20 * comboMult() * ((event && event.type === 'lucky') ? 2 : 1)), '#ff9d2e');
       } else {
-        bear.energy = Math.min(100, bear.energy + 8);
+        bear.energy = Math.min(MAXE, bear.energy + 8);
         comboHit();
         points += 5 * comboMult() * ((event && event.type === 'lucky') ? 2 : 1);
         sfx('berry');
@@ -1297,7 +1298,7 @@ function updatePlay(dt){
       picked.add(fi);
       stats.totalFlowers++;
       const rainBonus = (event && event.type === 'rain') ? 1 : 0;
-      bear.energy = Math.min(100, bear.energy + 1 + rainBonus);
+      bear.energy = Math.min(MAXE, bear.energy + 1 + rainBonus);
       comboHit();
       points += 1 * comboMult();
       addPetal(fi * 30, terrainY(fi * 30) - 8, rainBonus ? 10 : 5);
@@ -1394,7 +1395,7 @@ function updatePlay(dt){
           startMusic();
         }
       } else if (b.state !== 'stunned' && bear.starT <= 0) {
-        bear.energy = Math.max(0, bear.energy - 20);
+        bear.energy = Math.max(0, bear.energy - 15);
         bear.vx = (bear.x > b.x ? 1 : -1) * 260;
         comboBreak();
         shake = 10; sfx('bump'); vibrate(80);
@@ -1419,7 +1420,7 @@ function updatePlay(dt){
     const dx = bear.x - s.x, dy = bear.y - s.y;
     if (Math.sqrt(dx * dx + dy * dy) < R + 9 && bear.starT <= 0) {
       stingers.splice(i, 1);
-      bear.energy = Math.max(0, bear.energy - 8);
+      bear.energy = Math.max(0, bear.energy - 6);
       comboBreak();
       shake = 6; sfx('sting'); vibrate(30);
       addSparkle(s.x, s.y, 5);
@@ -1472,7 +1473,7 @@ function updatePlay(dt){
     const dx = bear.x - mt.x, dy = bear.y - mt.y;
     if (Math.sqrt(dx * dx + dy * dy) < R + mt.r && bear.starT <= 0) {
       meteors.splice(i, 1);
-      bear.energy = Math.max(0, bear.energy - 10);
+      bear.energy = Math.max(0, bear.energy - 8);
       comboBreak();
       shake = 9; sfx('bump'); vibrate(50);
       addSparkle(mt.x, mt.y, 10);
@@ -1501,7 +1502,7 @@ function updatePlay(dt){
       const d = Math.sqrt((bear.x - b.x) * (bear.x - b.x) + (bear.y - b.y) * (bear.y - b.y));
       if (d < R + 16 && bear.starT <= 0) {
         b.leave = true; b.leaveT = 1.4;
-        bear.energy = Math.max(0, bear.energy - 10);
+        bear.energy = Math.max(0, bear.energy - 8);
         bear.vx = (bear.x > b.x ? 1 : -1) * 200;
         comboBreak();
         shake = 7;
@@ -1535,7 +1536,7 @@ function updatePlay(dt){
       powers.splice(i, 1);
       if (p.type === 'star') { bear.starT = 3.5; sfx('star'); addToast('⭐ 无敌冲刺!'); }
       else if (p.type === 'magnet') { bear.magnetT = 6; sfx('magnet'); addToast('🧲 磁铁吸引!'); }
-      else { bear.energy = Math.min(100, bear.energy + 15); bear.shieldT = 5; sfx('clover'); addToast('🍀 幸运四叶草!'); }
+      else { bear.energy = Math.min(MAXE, bear.energy + 15); bear.shieldT = 5; sfx('clover'); addToast('🍀 幸运四叶草!'); }
       addSparkle(p.x, iy, 12);
     }
   }
@@ -1608,7 +1609,7 @@ function updateCamera(dt){
 
 /* ================= 绘制 ================= */
 function drawSky(){
-  const shift = Math.min(1, playTime / 110) * 0.85;
+  const shift = Math.min(1, playTime / 80) * 0.85;
   const g = ctx.createLinearGradient(0, camY, 0, camY + viewH);
   g.addColorStop(0, hexLerp(skyPal[0], '#ff9e6d', shift));
   g.addColorStop(0.55, hexLerp(skyPal[1], '#ffc98a', shift));
@@ -2154,8 +2155,8 @@ function drawWarnings(){
 }
 function drawWorld(){
   drawSky();
-  drawHillLayer(0.45, '#b7d9a3', 120, 0.0011, camY + viewH * 0.56);
-  drawHillLayer(0.70, '#93c47d', 80, 0.0018, camY + viewH * 0.66);
+  drawHillLayer(0.50, '#b7d9a3', 120, 0.0011, camY + viewH * 0.56);
+  drawHillLayer(0.75, '#93c47d', 80, 0.0018, camY + viewH * 0.66);
   drawSun();
   drawClouds();
   drawGround();
@@ -2266,7 +2267,7 @@ const elFill = document.getElementById('efill');
 const elMeters = document.getElementById('meters');
 const elHoney = document.getElementById('honeyc');
 function updateHUD(){
-  elFill.style.width = bear.energy + '%';
+  elFill.style.width = Math.min(100, bear.energy / MAXE * 100) + '%';
   elFill.style.background = 'linear-gradient(90deg,hsl(' + Math.round(bear.energy * 1.1) + ',80%,52%),hsl(' + Math.round(bear.energy * 1.1 + 18) + ',85%,45%))';
   elMeters.textContent = Math.floor(meters) + '米·' + score + '分';
   elHoney.textContent = '🍯×' + honey;
