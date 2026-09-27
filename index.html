@@ -126,11 +126,11 @@
       <span class="bear">🐻</span>
       <h1>草地打滚的小熊</h1>
       <p class="sub">在软软的草地上滚来滚去～<br>收集 🍯 和 🍓 补充体力，<br>躲开大石头、滚石和捣蛋的小蜜蜂！</p>
-      <p class="hint">🕹️ 左下角 <b>◀ ▶</b> 按钮控制方向<br>🔘 右下角「跳!」跳跃（空中再点 = 二段跳）<br>📷 点右上角相机 = 摄像头手指体感<br>　（有新手引导 · 手指左右转向 · 上挑/握拳跳）<br>⚠️ 红色 <b>!</b> / 白色弧线 = 起跳时机<br>🖥 电脑：← → 方向，空格跳跃</p>
+      <p class="hint">🕹️ 左下角 <b>◀ ▶</b> 按钮控制方向<br>🔘 右下角「跳!」跳跃（空中再点 = 二段跳）<br>📷 点右上角相机 = 摄像头手指体感<br>　（有新手引导 · 手指左右转向 · 上挑/握拳跳）<br>⚠️ 红色 <b>!</b> / 白色弧线 = 起跳时机<br>🐝 巨蜂女王 · 🎲 随机事件 · 🔥 连击加分<br>🖥 电脑：← → 方向，空格跳跃</p>
       <button id="btnStart" class="btn">开始打滚 🐾</button>
       <div id="menuBest"></div>
       <div id="menuAch" class="ver"></div>
-      <div class="ver">v6 · 体感版（手指骨骼识别操控）</div>
+      <div class="ver">v7 · 冒险版（Boss战 · 随机事件 · 华丽粒子）</div>
     </div>
   </div>
 
@@ -336,9 +336,9 @@ function comboHit(){
   combo++; comboTime = 3.5;
   if (combo > stats.bestCombo) stats.bestCombo = combo;
   if (combo === 3) addToast('太棒了! 🔥');
-  else if (combo === 5) addToast('超厉害! ✨');
-  else if (combo === 8) addToast('无敌小熊! 👑');
-  else if (combo === 10) addToast('连击封神! 🌟');
+  else if (combo === 5) { addToast('超厉害! ✨'); shake = Math.max(shake, 5); flashT = 0.25; }
+  else if (combo === 8) { addToast('无敌小熊! 👑'); shake = Math.max(shake, 6); flashT = 0.3; }
+  else if (combo === 10) { addToast('连击封神! 🌟'); shake = Math.max(shake, 8); flashT = 0.4; addConfetti(bear.x, bear.y, 24); }
 }
 function comboBreak(){ if (combo >= 2) comboBreakT = 1.4; combo = 0; }
 function addFloat(x, y, text, color){
@@ -385,6 +385,8 @@ function checkAch(){
       newAch.push(a);
       addToast('🏅 成就解锁：' + a.name + '!');
       sfx('ach');
+      flashT = 0.4;
+      addConfetti(bear.x, bear.y - 60, 20);
       got = true;
     }
   }
@@ -396,10 +398,12 @@ let combo, comboTime, comboBreakT, points, score, coyote, jumpBuf;
 let items, rocks, puddles, boulders, gaps, trail, marks, ps, bees;
 let powers, powerTimer, butterflies, bflyTimer, heartTimer, newAch, lastResult;
 let nextItemX, nextRockX, nextPuddleX, nextGapX, spawnCount, beeTimer, boulderTimer;
-let camX = 0, camY = 0, shake = 0;
+let camX = 0, camY = 0, shake = 0, flashT = 0;
 let eyeMode = 'idle';
 let floats = [];
 let toastTxt = null, toastT = 0, recordShown = false, metersMilestone = 0;
+let boss = null, stingers = [], bossTimer = 90, bossDefeats = 0;
+let event = null, eventTimer = 40, meteors = [];
 const clouds = [];
 for (let i = 0; i < 5; i++) {
   clouds.push({ x: Math.random() * 1600, y: 60 + Math.random() * 130, s: 0.7 + Math.random() * 0.8, v: 8 + Math.random() * 10 });
@@ -418,6 +422,9 @@ function resetGame(){
   items = []; rocks = []; puddles = []; boulders = []; gaps = [];
   powers = []; butterflies = []; powerTimer = 16; bflyTimer = 12; heartTimer = 1.1;
   newAch = []; lastResult = { dist: 0, total: 0 };
+  boss = null; stingers = []; bossTimer = 90; bossDefeats = 0;
+  event = null; eventTimer = 40; meteors = [];
+  flashT = 0;
   trail = [[]]; marks = []; ps = []; bees = [];
   beeTimer = 15; boulderTimer = 40;
   nextItemX = 700; nextRockX = 640; nextPuddleX = 1050; nextGapX = 2600; spawnCount = 0;
@@ -805,6 +812,17 @@ function addSplash(x, y, n){
       life:0.5, max:0.5, rot:0, vr:0, seed:0, col:'#a5dcf7' });
   }
 }
+function addRing(x, y, color){
+  ps.push({ type:'ring', x:x, y:y, vx:0, vy:0, grav:0, life:0.38, max:0.38, rot:0, vr:190, seed:0, r:8, col:color });
+}
+function addConfetti(x, y, n){
+  const cols = ['#ff5f6d', '#ffc371', '#7ae582', '#6fc3ff', '#d58cff', '#ffd23f'];
+  for (let i = 0; i < n; i++) {
+    ps.push({ type:'confetti', x:x, y:y, vx:(Math.random()-0.5)*260, vy:-120-Math.random()*220,
+      grav:420, life:1.1+Math.random()*0.5, max:1.4, rot:Math.random()*6.28, vr:(Math.random()-0.5)*14,
+      seed:Math.random()*6.28, col:cols[(Math.random()*cols.length)|0] });
+  }
+}
 function updateParticles(dt){
   for (let i = ps.length - 1; i >= 0; i--) {
     const p = ps[i];
@@ -813,6 +831,7 @@ function updateParticles(dt){
     p.x += (p.type === 'petal' ? p.vx + Math.sin(state.t * 6 + p.seed) * 34 : p.vx) * dt;
     p.y += p.vy * dt;
     if (p.grav) p.vy += p.grav * dt;
+    if (p.type === 'ring') p.r += p.vr * dt;
     p.rot += p.vr * dt;
   }
 }
@@ -832,6 +851,28 @@ function drawParticles(){
       ctx.moveTo(p.x - 4, p.y); ctx.lineTo(p.x + 4, p.y);
       ctx.moveTo(p.x, p.y - 4); ctx.lineTo(p.x, p.y + 4);
       ctx.stroke();
+    } else if (p.type === 'ring') {
+      ctx.globalAlpha = a;
+      ctx.strokeStyle = p.col; ctx.lineWidth = 3 * a + 1;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.stroke();
+    } else if (p.type === 'confetti') {
+      ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+      ctx.globalAlpha = Math.min(1, a * 1.5);
+      ctx.fillStyle = p.col;
+      ctx.fillRect(-4, -2, 8, 4);
+    } else if (p.type === 'rain') {
+      ctx.globalAlpha = a * 0.8;
+      ctx.strokeStyle = '#9fd8f5'; ctx.lineWidth = 2; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + 14, p.y + p.len); ctx.stroke();
+    } else if (p.type === 'meteor') {
+      ctx.translate(p.x, p.y);
+      ctx.globalAlpha = a;
+      ctx.fillStyle = 'rgba(255,140,60,0.3)';
+      ctx.beginPath(); ctx.arc(0, 0, p.r * 1.9, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#ff9d3b';
+      ctx.beginPath(); ctx.arc(0, 0, p.r, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#ffd9a0';
+      ctx.beginPath(); ctx.arc(-p.r * 0.3, -p.r * 0.3, p.r * 0.45, 0, Math.PI * 2); ctx.fill();
     } else {
       ctx.globalAlpha = a;
       ctx.fillStyle = p.col;
@@ -926,6 +967,7 @@ function tryJump(){
   bear.jumps = 0;
   bear.vy = -520;
   bear.stretch = 0.22;
+  addRing(bear.x, bear.y + R * 0.9, 'rgba(255,255,255,0.9)');
   coyote = 0;
   jumpBuf = 0;
   sfx('jump');
@@ -956,6 +998,7 @@ function updatePlay(dt){
     if (f.life <= 0) floats.splice(i, 1);
   }
   if (toastT > 0) toastT -= dt; else toastTxt = null;
+  flashT = Math.max(0, flashT - dt * 2.2);
 
   // 物理
   const spdMul = bear.starT > 0 ? 1.35 : 1;
@@ -999,6 +1042,7 @@ function updatePlay(dt){
       bear.vy = 0;
       bear.squash = 0.18;
       bear.jumps = 0;
+      addRing(bear.x, bear.groundY, 'rgba(255,215,90,0.9)');
       sfx('land');
       addDust(bear.x, bear.groundY, 3, Math.sign(bear.vx) || 1);
       trail.push([]);
@@ -1102,17 +1146,17 @@ function updatePlay(dt){
         honey++;
         stats.totalHoney++;
         comboHit();
-        points += 20 * comboMult();
+        points += 20 * comboMult() * ((event && event.type === 'lucky') ? 2 : 1);
         sfx('honey');
         addSparkle(it.x, iy, 10);
-        addFloat(it.x, iy - 28, '+' + (20 * comboMult()), '#ff9d2e');
+        addFloat(it.x, iy - 28, '+' + (20 * comboMult() * ((event && event.type === 'lucky') ? 2 : 1)), '#ff9d2e');
       } else {
         bear.energy = Math.min(100, bear.energy + 8);
         comboHit();
-        points += 5 * comboMult();
+        points += 5 * comboMult() * ((event && event.type === 'lucky') ? 2 : 1);
         sfx('berry');
         addSparkle(it.x, iy, 6);
-        addFloat(it.x, iy - 26, '+' + (5 * comboMult()), '#ff5fa2');
+        addFloat(it.x, iy - 26, '+' + (5 * comboMult() * ((event && event.type === 'lucky') ? 2 : 1)), '#ff5fa2');
       }
     }
   }
@@ -1124,10 +1168,11 @@ function updatePlay(dt){
     if (!bear.airborne && !inGap(fi * 30) && flowerExists(fi) && !picked.has(fi)) {
       picked.add(fi);
       stats.totalFlowers++;
-      bear.energy = Math.min(100, bear.energy + 1);
+      const rainBonus = (event && event.type === 'rain') ? 1 : 0;
+      bear.energy = Math.min(100, bear.energy + 1 + rainBonus);
       comboHit();
       points += 1 * comboMult();
-      addPetal(fi * 30, terrainY(fi * 30) - 8, 5);
+      addPetal(fi * 30, terrainY(fi * 30) - 8, rainBonus ? 10 : 5);
     }
   }
 
@@ -1145,9 +1190,168 @@ function updatePlay(dt){
       ang: (Math.random() - 0.5) * Math.PI, len: 9 + Math.random() * 9, life: 1 });
   }
 
-  // 蜜蜂（后期最多同时两只）
+  // 🐝 巨蜂女王 Boss（90 秒登场，踩踏击败，复活后更强）
+  if (!boss) {
+    bossTimer -= dt;
+    if (bossTimer <= 0) {
+      boss = { x: bear.x + viewW * 1.5, y: terrainY(bear.x) - 220, hp: 5 + bossDefeats, maxHp: 5 + bossDefeats,
+        ph: Math.random() * 6.28, state: 'enter', t: 0, shootT: 1.8, swoopT: 4.5, stunT: 0,
+        swoopTx: 0, swoopTy: 0, swoopTLeft: 0, deadT: 0 };
+      addToast('🐝 巨蜂女王来袭！跳起来踩它 ' + (5 + bossDefeats) + ' 次!');
+      sfx('sting'); shake = 6;
+    }
+  } else {
+    const b = boss;
+    b.t += dt;
+    const hoverX = bear.x + viewW * 0.45;
+    const hoverY = terrainY(bear.x) - 210 + Math.sin(state.simT * 2 + b.ph) * 40;
+    if (b.state === 'enter') {
+      b.x += (hoverX - b.x) * Math.min(1, 2 * dt);
+      b.y += (hoverY - b.y) * Math.min(1, 2.5 * dt);
+      if (Math.abs(b.x - hoverX) < 60) b.state = 'fight';
+    } else if (b.state === 'fight') {
+      b.x += (hoverX - b.x) * Math.min(1, 1.6 * dt);
+      b.y += (hoverY - b.y) * Math.min(1, 3 * dt);
+      b.shootT -= dt;
+      if (b.shootT <= 0) {
+        b.shootT = 2.0 + Math.random() * 0.8;
+        for (let k = -1; k <= 1; k++) {
+          stingers.push({ x: b.x, y: b.y + 24, vx: -(240 + Math.random() * 90) + k * 30, vy: k * 60, life: 3 });
+        }
+        sfx('sting');
+      }
+      b.swoopT -= dt;
+      if (b.swoopT <= 0) {
+        b.swoopT = 4.5 + Math.random() * 1.5;
+        b.state = 'swoop';
+        b.swoopTx = bear.x; b.swoopTy = bear.y;
+        b.swoopTLeft = 0.9;
+      }
+    } else if (b.state === 'swoop') {
+      b.swoopTLeft -= dt;
+      b.x += (b.swoopTx - b.x) * Math.min(1, 5 * dt);
+      b.y += (b.swoopTy + 30 - b.y) * Math.min(1, 6 * dt);
+      if (b.swoopTLeft <= 0) b.state = 'fight';
+    } else if (b.state === 'stunned') {
+      b.stunT -= dt;
+      b.y += 70 * dt;
+      if (b.stunT <= 0) b.state = 'fight';
+    }
+    // 碰撞：上方下落 = 踩踏；侧面接触 = 被撞
+    const dx = bear.x - b.x, dy = bear.y - b.y;
+    const d = Math.sqrt(dx * dx + dy * dy);
+    if (d < R + 46 && b.state !== 'dead') {
+      if (bear.y + R < b.y - 6 && bear.vy > 0) {
+        b.hp--;
+        bear.vy = -520; bear.airborne = true; bear.falling = false; bear.jumps = 0;
+        b.state = 'stunned'; b.stunT = 0.7;
+        shake = 8; sfx('bump'); vibrate(50);
+        addRing(b.x, b.y + 40, 'rgba(255,215,90,0.9)');
+        addSparkle(b.x, b.y, 12);
+        addFloat(b.x, b.y - 30, '-1', '#ffd23f');
+        if (b.hp <= 0) {
+          b.state = 'dead'; b.deadT = 0;
+          points += 500;
+          flashT = 0.5;
+          shake = 14;
+          sfx('honey'); sfx('ach');
+          addConfetti(b.x, b.y, 44);
+          addSparkle(b.x, b.y, 20);
+          addRing(b.x, b.y, 'rgba(255,255,255,0.9)');
+          addFloat(b.x, b.y - 46, '+500', '#ffd23f');
+          addToast('🐝 Boss 击败！+500 分');
+          bossDefeats++;
+        }
+      } else if (b.state !== 'stunned' && bear.starT <= 0) {
+        bear.energy = Math.max(0, bear.energy - 20);
+        bear.vx = (bear.x > b.x ? 1 : -1) * 260;
+        comboBreak();
+        shake = 10; sfx('bump'); vibrate(80);
+        if (bear.energy <= 0) { gameOver('energy'); return; }
+      }
+    }
+    if (b.state === 'dead') {
+      b.deadT += dt;
+      if (Math.random() < 0.5) addSparkle(b.x + (Math.random() - 0.5) * 70, b.y + (Math.random() - 0.5) * 70, 1);
+      if (b.deadT > 0.9) {
+        boss = null;
+        bossTimer = 80 + bossDefeats * 20;
+        stingers = [];
+      }
+    }
+  }
+  // 毒刺弹
+  for (let i = stingers.length - 1; i >= 0; i--) {
+    const s = stingers[i];
+    s.x += s.vx * dt; s.y += s.vy * dt; s.life -= dt;
+    if (s.life <= 0 || s.x < bear.x - viewW) { stingers.splice(i, 1); continue; }
+    const dx = bear.x - s.x, dy = bear.y - s.y;
+    if (Math.sqrt(dx * dx + dy * dy) < R + 9 && bear.starT <= 0) {
+      stingers.splice(i, 1);
+      bear.energy = Math.max(0, bear.energy - 8);
+      comboBreak();
+      shake = 6; sfx('sting'); vibrate(30);
+      addSparkle(s.x, s.y, 5);
+      if (bear.energy <= 0) { gameOver('energy'); return; }
+    }
+  }
+
+  // 🎲 随机事件（甘霖 / 流星雨 / 幸运时刻）
+  if (!event) {
+    eventTimer -= dt;
+    if (eventTimer <= 0) {
+      const types = ['rain', 'meteor', 'lucky'];
+      const ty = types[(Math.random() * 3) | 0];
+      event = { type: ty, t: 0, dur: (ty === 'meteor') ? 7 : 8, spawnT: 0 };
+      if (ty === 'rain') addToast('🌧️ 甘霖降临！花朵加倍绽放');
+      else if (ty === 'meteor') addToast('☄️ 流星雨来袭！小心躲避');
+      else addToast('🍀 幸运时刻！双倍得分');
+      sfx('star');
+    }
+  } else {
+    const ev = event;
+    ev.t += dt;
+    ev.spawnT -= dt;
+    if (ev.type === 'rain') {
+      if (Math.random() < 0.6) {
+        ps.push({ type:'rain', x: bear.x + (Math.random() - 0.5) * viewW * 2, y: camY - 30,
+          vx: -90, vy: 780, grav: 0, life: 1.2, max: 1.2, rot: 0, vr: 0, seed: 0,
+          len: 12 + Math.random() * 10, col: '#9fd8f5' });
+      }
+    } else if (ev.type === 'meteor' && ev.spawnT <= 0) {
+      ev.spawnT = 0.75;
+      meteors.push({ x: bear.x + viewW * (0.6 + Math.random() * 0.7), y: camY - 60,
+        vx: -(300 + Math.random() * 180), vy: 380 + Math.random() * 140, r: 12 + Math.random() * 9 });
+    }
+    if (ev.t >= ev.dur) {
+      event = null;
+      eventTimer = 40 + Math.random() * 20;
+      meteors = [];
+    }
+  }
+  // 流星碰撞
+  for (let i = meteors.length - 1; i >= 0; i--) {
+    const mt = meteors[i];
+    mt.x += mt.vx * dt; mt.y += mt.vy * dt; mt.vy += 60 * dt;
+    if (Math.random() < 0.5) {
+      ps.push({ type:'spark', x:mt.x, y:mt.y, vx:-mt.vx * 0.2, vy:(Math.random() - 0.5) * 40, grav:0,
+        life:0.3, max:0.3, rot:0, vr:0, seed:0, col:'#ff9d3b' });
+    }
+    if (mt.y > camY + viewH + 120 || mt.x < bear.x - viewW * 0.5) { meteors.splice(i, 1); continue; }
+    const dx = bear.x - mt.x, dy = bear.y - mt.y;
+    if (Math.sqrt(dx * dx + dy * dy) < R + mt.r && bear.starT <= 0) {
+      meteors.splice(i, 1);
+      bear.energy = Math.max(0, bear.energy - 10);
+      comboBreak();
+      shake = 9; sfx('bump'); vibrate(50);
+      addSparkle(mt.x, mt.y, 10);
+      if (bear.energy <= 0) { gameOver('energy'); return; }
+    }
+  }
+
+  // 蜜蜂（后期最多同时两只，Boss 在场时暂停刷新）
   const maxBees = playTime > 50 ? 2 : 1;
-  if (bees.length < maxBees) {
+  if (!boss && bees.length < maxBees) {
     beeTimer -= dt;
     if (beeTimer <= 0) {
       beeTimer = Math.max(5, 14 - playTime * 0.05) + Math.random() * 4;
@@ -1224,10 +1428,10 @@ function updatePlay(dt){
     if (!bf.taken && d < R + 22) {
       bf.taken = true;
       comboHit();
-      points += 10 * comboMult();
+      points += 10 * comboMult() * ((event && event.type === 'lucky') ? 2 : 1);
       sfx('bfly');
       addSparkle(bf.x, bf.y, 8);
-      addFloat(bf.x, bf.y - 20, '+' + (10 * comboMult()), '#d58cff');
+      addFloat(bf.x, bf.y - 20, '+' + (10 * comboMult() * ((event && event.type === 'lucky') ? 2 : 1)), '#d58cff');
       butterflies.splice(i, 1);
     }
   }
@@ -1251,7 +1455,7 @@ function updatePlay(dt){
   stats.bestRunMeters = Math.max(stats.bestRunMeters, Math.floor(meters));
   checkAch();
   const mi = Math.floor(meters / 100);
-  if (mi > metersMilestone) { metersMilestone = mi; addToast(mi * 100 + ' 米啦! 🎉'); }
+  if (mi > metersMilestone) { metersMilestone = mi; addToast(mi * 100 + ' 米啦! 🎉'); flashT = 0.35; addConfetti(bear.x, bear.y - 60, 18); }
   if (!recordShown && state.best > 0 && score > state.best) { recordShown = true; addToast('🏆 打破纪录啦!'); }
   updateHUD();
 }
@@ -1591,6 +1795,79 @@ function drawPower(p){
   }
   ctx.restore();
 }
+function drawBoss(b){
+  const s = (bear.x > b.x) ? 1 : -1;
+  const wob = Math.sin(state.t * 18) * 0.8;
+  ctx.save();
+  ctx.translate(b.x, b.y);
+  // 光环
+  ctx.strokeStyle = 'rgba(255,180,60,0.5)';
+  ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.arc(0, 0, 62 + Math.sin(state.t * 5) * 4, 0, Math.PI * 2); ctx.stroke();
+  // 大翅膀
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.beginPath(); ctx.ellipse(-18, -30, 22, 10, -0.4 + wob * 0.5, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(18, -30, 22, 10, 0.4 - wob * 0.5, 0, Math.PI * 2); ctx.fill();
+  // 身体条纹
+  ctx.save();
+  ctx.beginPath(); ctx.ellipse(0, 0, 34, 26, 0, 0, Math.PI * 2); ctx.clip();
+  ctx.fillStyle = '#ffd23f'; ctx.fillRect(-36, -28, 72, 56);
+  ctx.fillStyle = '#3a3128';
+  ctx.fillRect(-22, -28, 13, 56); ctx.fillRect(6, -28, 13, 56);
+  ctx.restore();
+  ctx.strokeStyle = '#3a3128'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.ellipse(0, 0, 34, 26, 0, 0, Math.PI * 2); ctx.stroke();
+  // 王冠
+  ctx.fillStyle = '#ffd23f'; ctx.strokeStyle = '#b8860b'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(-14, -24); ctx.lineTo(-14, -38); ctx.lineTo(-6, -29);
+  ctx.lineTo(0, -42); ctx.lineTo(6, -29); ctx.lineTo(14, -38); ctx.lineTo(14, -24);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  // 尾刺
+  ctx.fillStyle = '#3a3128';
+  ctx.beginPath();
+  ctx.moveTo(-30 * s, -6); ctx.lineTo(-52 * s, 0); ctx.lineTo(-30 * s, 6);
+  ctx.closePath(); ctx.fill();
+  // 怒目
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath(); ctx.arc(12 * s, -8, 7, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(24 * s, -8, 7, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#c0392b';
+  ctx.beginPath(); ctx.arc(14 * s, -8, 3.6, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(26 * s, -8, 3.6, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+  if (b.state === 'stunned') {
+    ctx.fillStyle = '#ffd23f';
+    for (let k = 0; k < 3; k++) {
+      const a = state.t * 6 + k * 2.09;
+      ctx.beginPath();
+      ctx.arc(b.x + Math.cos(a) * 48, b.y + Math.sin(a) * 18 - 6, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+function drawStinger(s){
+  ctx.save();
+  ctx.translate(s.x, s.y);
+  ctx.fillStyle = '#3a3128';
+  ctx.beginPath();
+  ctx.moveTo(10, 0); ctx.lineTo(-10, -3); ctx.lineTo(-10, 3);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#ffd23f';
+  ctx.beginPath(); ctx.arc(0, 0, 5, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+function drawMeteor(mt){
+  ctx.save();
+  ctx.translate(mt.x, mt.y);
+  ctx.fillStyle = 'rgba(255,140,60,0.3)';
+  ctx.beginPath(); ctx.arc(0, 0, mt.r * 1.9, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#ff9d3b';
+  ctx.beginPath(); ctx.arc(0, 0, mt.r, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#ffd9a0';
+  ctx.beginPath(); ctx.arc(-mt.r * 0.3, -mt.r * 0.3, mt.r * 0.45, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
 function drawBear(){
   const r = R, x = bear.x, y = bear.y;
   const airH = Math.max(0, (bear.groundY - R) - bear.y);
@@ -1735,7 +2012,32 @@ function drawWorld(){
     if (items[i].taken) continue;
     if (items[i].type === 'berry') drawBerry(items[i]); else drawHoney(items[i]);
   }
+  for (let i = 0; i < meteors.length; i++) drawMeteor(meteors[i]);
+  if (boss && boss.state !== 'dead') drawBoss(boss);
+  if (boss && boss.state !== 'dead') {
+    const bw = 200, bh = 12, bx = boss.x - bw / 2, by = boss.y - 78;
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    rrect(bx - 2, by - 2, bw + 4, bh + 4, 7); ctx.fill();
+    ctx.fillStyle = '#c0392b';
+    rrect(bx, by, bw, bh, 5); ctx.fill();
+    ctx.fillStyle = '#ffd23f';
+    rrect(bx, by, bw * Math.max(0, boss.hp / boss.maxHp), bh, 5); ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '900 12px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('🐝 巨蜂女王', boss.x, by - 12);
+  }
+  for (let i = 0; i < stingers.length; i++) drawStinger(stingers[i]);
   drawBear();
+  // 连击计时环
+  if (state.mode === 'playing' && combo >= 2 && comboTime > 0) {
+    const fr = Math.max(0, comboTime / 3.5);
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    ctx.arc(bear.x, bear.y, R + 6, -Math.PI / 2, -Math.PI / 2 + fr * Math.PI * 2);
+    ctx.stroke();
+  }
   // 无敌冲刺光环 / 四叶草护盾环
   if (bear.starT > 0) {
     ctx.strokeStyle = 'rgba(255,215,90,' + (Math.min(1, bear.starT) * (0.5 + 0.3 * Math.sin(state.t * 10))) + ')';
@@ -1865,6 +2167,25 @@ function render(){
     vg.addColorStop(1, 'rgba(255,40,40,' + a.toFixed(3) + ')');
     ctx.fillStyle = vg;
     ctx.fillRect(0, 0, W, H);
+  }
+  // 金色闪光（里程碑 / 成就 / Boss 击败）
+  if (flashT > 0 && state.mode === 'playing') {
+    ctx.fillStyle = 'rgba(255,236,170,' + (flashT * 0.55).toFixed(3) + ')';
+    ctx.fillRect(0, 0, W, H);
+  }
+  // 随机事件状态条
+  if (event && state.mode === 'playing') {
+    const labels = { rain: '🌧️ 甘霖', meteor: '☄️ 流星雨', lucky: '🍀 幸运时刻' };
+    const left = Math.max(1, Math.ceil(event.dur - event.t));
+    ctx.save();
+    ctx.font = '700 16px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    rrect(W / 2 - 88, H * 0.125, 176, 34, 17);
+    ctx.fill();
+    ctx.fillStyle = '#5a3b1f';
+    ctx.fillText(labels[event.type] + ' ' + left + 's', W / 2, H * 0.125 + 17);
+    ctx.restore();
   }
 }
 let last = 0;
